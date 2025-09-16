@@ -1,0 +1,103 @@
+// Profile.js
+import React from 'react';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, SafeAreaView, KeyboardAvoidingView, Platform, Alert } from 'react-native';
+import * as Font from 'expo-font';
+import api from './api';
+
+const FONT_FAMILY = 'NewsCycle-Regular';
+const FONT_PATH = require('./assets/fonts/NewsCycle-Regular.ttf');
+const DARK = '#333';
+const SHADOW = { shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 3 };
+
+export default function Profile({ route, navigation }) {
+  const { token } = route.params || {};
+  const [fontsReady, setFontsReady] = React.useState(false);
+
+  const [email, setEmail] = React.useState('');
+  const [password, setPassword] = React.useState('');
+  const [password2, setPassword2] = React.useState('');
+
+  React.useEffect(() => {
+    (async () => {
+      try { await Font.loadAsync({ [FONT_FAMILY]: FONT_PATH }); } finally { setFontsReady(true); }
+    })();
+  }, []);
+
+  if (!fontsReady) return null;
+
+  const onSave = async () => {
+    if (!email.trim()) return Alert.alert('Увага', 'Вкажіть email (логін)');
+    if (!password.trim()) return Alert.alert('Увага', 'Вкажіть новий пароль');
+    if (password !== password2) return Alert.alert('Увага', 'Паролі не співпадають');
+
+    try {
+      const j = await api.login(email, password); // або твій ендпойнт зміни пароля, якщо є
+      if (!j?.ok && !j?.token) throw new Error(j?.error || 'Не вдалося оновити');
+      Alert.alert('Готово', 'Дані збережено');
+      navigation.goBack();
+    } catch (e) {
+      Alert.alert('Помилка', String(e.message || e));
+    }
+  };
+
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#F3F5F9' }}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <View style={{ padding: 14 }}>
+          <Text style={styles.header}>Профіль</Text>
+
+          <Text style={styles.label}>Email (логін)</Text>
+          <TextInput
+            style={[styles.input, styles.inputText]}
+            placeholder="your@email.com"
+            placeholderTextColor="#9CA3AF"
+            value={email}
+            onChangeText={setEmail}
+            keyboardType="email-address"
+            autoCapitalize="none"
+          />
+
+          <Text style={styles.label}>Новий пароль</Text>
+          <TextInput
+            style={[styles.input, styles.inputText]}
+            placeholder="мін. 6 символів"
+            placeholderTextColor="#9CA3AF"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+          />
+
+          <Text style={styles.label}>Підтвердження пароля</Text>
+          <TextInput
+            style={[styles.input, styles.inputText]}
+            placeholder="повторіть пароль"
+            placeholderTextColor="#9CA3AF"
+            value={password2}
+            onChangeText={setPassword2}
+            secureTextEntry
+          />
+
+          <TouchableOpacity onPress={onSave} style={[styles.btn, { backgroundColor: DARK }]}>
+            <Text style={styles.btnText}>ЗБЕРЕГТИ</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity onPress={() => navigation.goBack()} style={[styles.btn, { backgroundColor: '#7B7B7B', marginTop: 8 }]}>
+            <Text style={styles.btnText}>НАЗАД</Text>
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  header: { fontFamily: FONT_FAMILY, fontSize: 20, fontWeight: '700', marginBottom: 12, color: '#111827' },
+  label: { fontFamily: FONT_FAMILY, fontSize: 13, color: '#111827', marginTop: 8, marginBottom: 4, fontWeight: '600' },
+  input: {
+    height: 40, borderRadius: 10, paddingHorizontal: 10, backgroundColor: '#fff',
+    borderWidth: 1, borderColor: '#E5E7EB', marginBottom: 2,
+  },
+  inputText: { fontFamily: FONT_FAMILY, fontSize: 15, color: '#111827', includeFontPadding: false, textAlignVertical: 'center' },
+  btn: { marginTop: 14, height: 46, borderRadius: 12, alignItems: 'center', justifyContent: 'center', ...SHADOW },
+  btnText: { fontFamily: FONT_FAMILY, color: '#fff', fontSize: 16, fontWeight: '800' },
+});

@@ -1,0 +1,14 @@
+(
+echo .vs/
+echo .git/
+echo .expo/
+echo .DS_Store
+echo *.log
+echo *.vsidx
+echo *.lock
+echo .idea/
+echo dist/
+echo build/
+echo android/
+echo ios/
+) > .easignore

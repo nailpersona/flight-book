@@ -1,0 +1,16 @@
+{
+  "cli": {
+    "version": ">= 10.0.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "preview": {
+      "distribution": "internal",
+      "android": { "buildType": "apk" }
+    },
+    "production": {
+      "android": { "gradleCommand": ":app:bundleRelease" }
+    }
+  },
+  "submit": {}
+}
