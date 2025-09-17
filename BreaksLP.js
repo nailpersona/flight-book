@@ -7,15 +7,18 @@ import { AuthCtx } from './App';
 import api from './api';
 
 const FONT = 'NewsCycle-Regular';
-const DARK = '#333';
 
-// Колір фону залежно від статусу
+// Колір фону залежно від статусу - як у BreaksMU
 const getColorStyle = (color) => {
   switch (color) {
-    case 'green': return { backgroundColor: '#10B981', color: '#fff' };
-    case 'yellow': return { backgroundColor: '#F59E0B', color: '#fff' };
-    case 'red': return { backgroundColor: '#EF4444', color: '#fff' };
-    default: return { backgroundColor: '#E5E7EB', color: '#374151' };
+    case 'red':
+      return { backgroundColor: '#EF4444', color: '#FFFFFF' };
+    case 'yellow':
+      return { backgroundColor: '#F59E0B', color: '#000000' };
+    case 'green':
+      return { backgroundColor: '#10B981', color: '#FFFFFF' };
+    default:
+      return { backgroundColor: '#F3F4F6', color: '#6B7280' };
   }
 };
 
@@ -26,69 +29,80 @@ const ActionButton = ({ title, style, onPress, disabled }) => (
   </TouchableOpacity>
 );
 
+// Оновлена DataCard за стилем BreaksMU
 const DataCard = ({ title, items }) => {
   // Беремо перший елемент для показу однієї дати
   const mainItem = items.length > 0 ? items[0] : null;
-  const hasDate = mainItem && mainItem.date && mainItem.date.trim() !== '';
-  
+  const hasDate = mainItem && mainItem.date && mainItem.date.trim() !== '' && mainItem.date !== 'Немає даних';
+  const colorStyle = getColorStyle(mainItem?.color);
+
   return (
     <View style={styles.card}>
-      {/* Тільки назва виду ЛП по центру */}
       <Text style={[styles.cardTitle, { fontFamily: FONT }]}>{title}</Text>
       
-      {/* Тільки дата з кольором або прочерк - БЕЗ НАЗВ ЛІТАКІВ */}
-      {hasDate ? (
-        <View style={[styles.dateChip, getColorStyle(mainItem.color)]}>
-          <Text style={[styles.dateText, { 
-            fontFamily: FONT, 
-            color: getColorStyle(mainItem.color).color 
-          }]}>
-            {mainItem.date}
-          </Text>
-        </View>
-      ) : (
-        <Text style={[styles.dashText, { fontFamily: FONT }]}>—</Text>
-      )}
+      <View style={styles.dateSection}>
+        {hasDate ? (
+          <View style={[styles.dateChip, colorStyle]}>
+            <Text style={[styles.dateText, { 
+              fontFamily: FONT, 
+              color: colorStyle.color 
+            }]}>
+              {mainItem.date}
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.emptyDateChip}>
+            <Text style={[styles.dashText, { fontFamily: FONT }]}>—</Text>
+          </View>
+        )}
+      </View>
     </View>
   );
 };
 
-const PilotSelector = ({ pilots, selectedPilot, onSelect, visible, onClose }) => (
-  <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-    <View style={styles.modalBackdrop}>
-      <View style={styles.modalCard}>
-  <FlatList
-          data={pilots}
-          keyExtractor={(item, idx) => item + '_' + idx}
-          style={{ maxHeight: 400 }}
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              onPress={() => onSelect(item)}
-              style={[
-                styles.pilotRow,
-                selectedPilot === item && styles.selectedPilotRow
-              ]}
-            >
-              <Text style={[
-                styles.pilotText,
-                { fontFamily: FONT },
-                selectedPilot === item && styles.selectedPilotText
-              ]}>
-                {item}
-              </Text>
-            </TouchableOpacity>
-          )}
-        />
+const PilotSelector = ({ pilots, selectedPilot, onSelect, visible, onClose }) => {
+  const cleanPilotName = (name) => {
+    return name.replace(/^.*?\d{4}\s*\d{2}:\d{2}:\d{2}.*?\)\s*/, '').trim();
+  };
 
-        <ActionButton
-          title="ЗАКРИТИ"
-          onPress={onClose}
-          style={{ backgroundColor: '#7B7B7B', marginTop: 10 }}
-        />
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={styles.modalBackdrop}>
+        <View style={styles.modalCard}>
+          <FlatList
+            data={pilots}
+            keyExtractor={(item, idx) => item + '_' + idx}
+            style={{ maxHeight: 400 }}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                onPress={() => onSelect(item)}
+                style={[
+                  styles.pilotRow,
+                  selectedPilot === item && styles.selectedPilotRow
+                ]}
+              >
+                <Text style={[
+                  styles.pilotText,
+                  { fontFamily: FONT },
+                  selectedPilot === item && styles.selectedPilotText
+                ]}>
+                  {cleanPilotName(item)}
+                </Text>
+              </TouchableOpacity>
+            )}
+          />
+
+          <TouchableOpacity
+            style={styles.closeButton}
+            onPress={onClose}
+          >
+            <Text style={[styles.closeButtonText, { fontFamily: FONT }]}>ЗАКРИТИ</Text>
+          </TouchableOpacity>
+        </View>
       </View>
-    </View>
-  </Modal>
-);
+    </Modal>
+  );
+};
 
 export default function BreaksLP({ route, navigation }) {
   const { auth } = useContext(AuthCtx);
@@ -101,32 +115,31 @@ export default function BreaksLP({ route, navigation }) {
   const [showPilotSelector, setShowPilotSelector] = useState(false);
 
   // Завантаження списку пілотів для адміна
- 
-useEffect(() => {
-  const loadPilots = async () => {
-    if (!isAdmin || !auth?.token) return;
-    
-    try {
-      // Спочатку пробуємо завантажити з валідації
-      const result = await api.getValidationPilots(auth.token);
-      if (result?.ok && result.pilots) {
-        setPilots(result.pilots);
-        return;
-      }
+  useEffect(() => {
+    const loadPilots = async () => {
+      if (!isAdmin || !auth?.token) return;
       
-      // Fallback до getAllPilots
-      const fallbackResult = await api.getAllPilots(auth.token);
-      if (fallbackResult?.ok && fallbackResult.pilots) {
-        setPilots(fallbackResult.pilots);
+      try {
+        // Спочатку пробуємо завантажити з валідації
+        const result = await api.getValidationPilots(auth.token);
+        if (result?.ok && result.pilots) {
+          setPilots(result.pilots);
+          return;
+        }
+        
+        // Fallback до getAllPilots
+        const fallbackResult = await api.getAllPilots(auth.token);
+        if (fallbackResult?.ok && fallbackResult.pilots) {
+          setPilots(fallbackResult.pilots);
+        }
+      } catch (error) {
+        console.warn('Помилка завантаження списку пілотів:', error);
+        setPilots([]);
       }
-    } catch (error) {
-      console.warn('Помилка завантаження списку пілотів:', error);
-      setPilots([]);
-    }
-  };
-  
-  loadPilots();
-}, [isAdmin, auth?.token]);
+    };
+    
+    loadPilots();
+  }, [isAdmin, auth?.token]);
 
   // Завантаження даних перерв
   const loadData = async () => {
@@ -161,11 +174,25 @@ useEffect(() => {
     setShowPilotSelector(false);
   };
 
+  const cleanPilotName = (name) => {
+    return name.replace(/^.*?\d{4}\s*\d{2}:\d{2}:\d{2}.*?\)\s*/, '').trim();
+  };
+
   if (loading) {
     return (
-      <SafeAreaView style={styles.safe}>
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <Text style={[styles.title, { fontFamily: FONT }]}>Перерви за видами ЛП</Text>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <Text style={[styles.backButtonText, { fontFamily: FONT }]}>Назад</Text>
+          </TouchableOpacity>
+        </View>
+        
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={DARK} />
+          <ActivityIndicator size="large" color="#4A90E2" />
           <Text style={[styles.loadingText, { fontFamily: FONT }]}>
             Завантаження даних перерв за видами ЛП...
           </Text>
@@ -174,9 +201,9 @@ useEffect(() => {
     );
   }
 
-  // Змінено: використовуємо data.lp замість data.mu
+  // Використовуємо data.lp замість data.mu
   const lpData = data.lp || {};
-  // Змінено: категорії для льотної практики
+  // Категорії для льотної практики
   const lpTypes = [
     'Складний пілотаж',
     'Мала висота', 
@@ -185,43 +212,43 @@ useEffect(() => {
     'Групова злітаність',
     'На десантування'
   ];
+  const currentIsAdmin = isAdmin || (auth?.role === 'admin');
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        {/* Змінено заголовок */}
         <Text style={[styles.title, { fontFamily: FONT }]}>Перерви за видами ЛП</Text>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Text style={[styles.backBtnText, { fontFamily: FONT }]}>Назад</Text>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+        >
+          <Text style={[styles.backButtonText, { fontFamily: FONT }]}>Назад</Text>
         </TouchableOpacity>
       </View>
 
-      {isAdmin && (
-        <View style={styles.pilotSelectorContainer}>
-          <Text style={[styles.selectorLabel, { fontFamily: FONT }]}>Льотчик:</Text>
-          <TouchableOpacity 
-            style={styles.pilotSelectorBtn}
+      {currentIsAdmin && (
+        <View style={styles.filterContainer}>
+          <TouchableOpacity
+            style={styles.filterButton}
             onPress={() => setShowPilotSelector(true)}
           >
-            <Text style={[styles.pilotSelectorText, { fontFamily: FONT }]}>
-              {selectedPilot || 'Оберіть льотчика'}
+            <Text style={[styles.filterButtonText, { fontFamily: FONT }]}>
+              {cleanPilotName(selectedPilot) || 'Оберіть льотчика'}
             </Text>
-            <Text style={styles.selectorCaret}>▾</Text>
           </TouchableOpacity>
         </View>
       )}
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Змінено: використовуємо lpTypes та lpData */}
-        {lpTypes.map(lpType => (
-          <DataCard
-            key={lpType}
-            title={lpType}
-            items={lpData[lpType] || []}
-          />
-        ))}
-        
-        <View style={{ height: 20 }} />
+      <ScrollView style={styles.scrollView}>
+        <View style={styles.content}>
+          {lpTypes.map(lpType => (
+            <DataCard
+              key={lpType}
+              title={lpType}
+              items={lpData[lpType] || []}
+            />
+          ))}
+        </View>
       </ScrollView>
 
       <PilotSelector
@@ -236,153 +263,137 @@ useEffect(() => {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#F4F6F8' },
-  
+  container: {
+    flex: 1,
+    backgroundColor: '#F4F6F8',
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: '600',
+    color: '#1F2937',
+  },
+  backButton: {
+    backgroundColor: '#6B7280',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  backButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  filterContainer: {
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  filterButton: {
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#F9FAFB',
+  },
+  filterButtonText: {
+    fontSize: 16,
+    color: '#374151',
+  },
+  scrollView: {
+    flex: 1,
+  },
+  content: {
+    padding: 16,
+  },
+  card: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    alignItems: 'center',
+  },
+  cardTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  dateSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  dateChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+    minWidth: 120,
+    alignItems: 'center',
+  },
+  emptyDateChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+    minWidth: 120,
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderStyle: 'dashed',
+  },
+  dateText: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  dashText: {
+    fontSize: 24,
+    color: '#9CA3AF',
+  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
   loadingText: {
-    marginTop: 10,
     fontSize: 16,
     color: '#6B7280',
+    marginTop: 16,
   },
-
-  header: {
-    paddingHorizontal: 16,
-    paddingTop: Platform.OS === 'android' ? 8 : 6,
-    paddingBottom: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: '#111827',
-  },
-  backBtn: {
-    backgroundColor: DARK,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-  },
-  backBtnText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-
-  pilotSelectorContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-    gap: 12,
-  },
-  selectorLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#374151',
-  },
-  pilotSelectorBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  pilotSelectorText: {
-    fontSize: 16,
-    color: '#111827',
-  },
-  selectorCaret: {
-    fontSize: 16,
-    color: '#6B7280',
-  },
-
-  content: {
-    flex: 1,
-    paddingHorizontal: 16,
-  },
-
-  card: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
-    alignItems: 'center', // Центруємо вміст
-  },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#111827',
-    marginBottom: 16,
-    textAlign: 'center', // Назва по центру
-  },
-  
-  // Новий контейнер для дати
-  dateContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  
-  dateChip: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    minWidth: 120,
-    alignItems: 'center',
-  },
-  dateText: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  
-  // Стиль для прочерка
-  dashText: {
-    fontSize: 24,
-    color: '#9CA3AF',
-    textAlign: 'center',
-  },
-
-  // Modal styles
   modalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
-    padding: 20,
+    alignItems: 'center',
   },
   modalCard: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
     padding: 20,
-    maxHeight: '80%',
+    margin: 20,
+    maxWidth: '90%',
+    minWidth: '80%',
   },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    marginBottom: 16,
-    color: '#111827',
-    textAlign: 'center',
-  },
-  
   pilotRow: {
     paddingVertical: 12,
-    paddingHorizontal: 8,
+    paddingHorizontal: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#F3F4F6',
   },
@@ -391,13 +402,24 @@ const styles = StyleSheet.create({
   },
   pilotText: {
     fontSize: 16,
-    color: '#111827',
+    color: '#374151',
   },
   selectedPilotText: {
-    fontWeight: '600',
     color: '#1D4ED8',
+    fontWeight: '500',
   },
-
+  closeButton: {
+    backgroundColor: '#6B7280',
+    paddingVertical: 12,
+    borderRadius: 8,
+    marginTop: 16,
+    alignItems: 'center',
+  },
+  closeButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '500',
+  },
   btn: {
     borderRadius: 14,
     paddingVertical: 14,
@@ -409,9 +431,8 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   btnText: {
-    color: '#fff',
+    color: '#FFFFFF',
     fontSize: 18,
     fontWeight: '800',
-    letterSpacing: 0.3,
   },
 });

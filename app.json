@@ -5,6 +5,7 @@
     "version": "1.2.0",
     "orientation": "portrait",
     "icon": "./assets/logo.png",
+    "platforms": ["ios", "android", "web"],
     "splash": {
       "image": "./assets/logo.png",
       "resizeMode": "contain",
@@ -23,13 +24,19 @@
       "permissions": []
     },
     "extra": {
-      "webAppUrl": "https://script.google.com/macros/s/AKfycbxtgz41gKgiP0R97CGN1ew__j9GfJX79u99DQt8uUnEAzo02HOvwqGDpeFw3fJ-pwzaiw/exec",
+      "webAppUrl": "https://script.google.com/macros/s/AKfycby2-CTon6ZRApIPDrPaK5qtF9S3SHVP71L0zXyInkhU6kGl-9bHggJGHb53nmogAaqyDQ/exec",
       "eas": {
         "projectId": "abc083a6-13c2-4340-bf39-b09fe6e4005a"
       }
     },
     "plugins": [
       "expo-font"
-    ]
+    ],
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/abc083a6-13c2-4340-bf39-b09fe6e4005a"
+    }
   }
 }

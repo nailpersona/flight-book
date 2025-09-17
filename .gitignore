@@ -35,3 +35,8 @@ yarn-error.*
 
 # typescript
 *.tsbuildinfo
+
+echo .vs/ >> .gitignore
+echo *.vsidx >> .gitignore
+echo *.wsuo >> .gitignore
+echo *.sqlite >> .gitignore

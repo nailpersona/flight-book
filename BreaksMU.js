@@ -7,15 +7,18 @@ import { AuthCtx } from './App';
 import api from './api';
 
 const FONT = 'NewsCycle-Regular';
-const DARK = '#333';
 
-// Колір фону залежно від статусу
+// Колір фону залежно від статусу - як у CommissionTable
 const getColorStyle = (color) => {
   switch (color) {
-    case 'green': return { backgroundColor: '#10B981', color: '#fff' };
-    case 'yellow': return { backgroundColor: '#F59E0B', color: '#fff' };
-    case 'red': return { backgroundColor: '#EF4444', color: '#fff' };
-    default: return { backgroundColor: '#E5E7EB', color: '#374151' };
+    case 'red':
+      return { backgroundColor: '#EF4444', color: '#FFFFFF' };
+    case 'yellow':
+      return { backgroundColor: '#F59E0B', color: '#000000' };
+    case 'green':
+      return { backgroundColor: '#10B981', color: '#FFFFFF' };
+    default:
+      return { backgroundColor: '#F3F4F6', color: '#6B7280' };
   }
 };
 
@@ -26,86 +29,93 @@ const ActionButton = ({ title, style, onPress, disabled }) => (
   </TouchableOpacity>
 );
 
+// Оновлена DataCard за стилем CommissionTable
 const DataCard = ({ title, items }) => (
   <View style={styles.card}>
     <Text style={[styles.cardTitle, { fontFamily: FONT }]}>{title}</Text>
     <View style={styles.itemsContainer}>
       {items.map((item, index) => {
-        // Перевіряємо чи є дата
-        if (!item.date || item.date.trim() === '' || item.date === 'Немає даних') {
-          return (
-            <View key={index} style={styles.itemRow}>
-              <Text style={[styles.aircraftText, { fontFamily: FONT }]}>
-                {item.aircraft || 'Загальний'}
-              </Text>
-              <View style={styles.noDateContainer}>
-                <Text style={[styles.noDateText, { fontFamily: FONT }]}>
-                  Немає даних
-                </Text>
-              </View>
-            </View>
-          );
-        }
-
+        const hasDate = item.date && item.date.trim() !== '' && item.date !== 'Немає даних';
         const colorStyle = getColorStyle(item.color);
+        
         return (
           <View key={index} style={styles.itemRow}>
             <Text style={[styles.aircraftText, { fontFamily: FONT }]}>
               {item.aircraft || 'Загальний'}
             </Text>
-            <View style={[styles.dateChip, colorStyle]}>
-              <Text style={[styles.dateText, { fontFamily: FONT, color: colorStyle.color }]}>
-                {item.date}
-              </Text>
+            
+            <View style={styles.dateSection}>
+              {hasDate ? (
+                <View style={[styles.dateChip, colorStyle]}>
+                  <Text style={[styles.dateText, { 
+                    fontFamily: FONT, 
+                    color: colorStyle.color 
+                  }]}>
+                    {item.date}
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.emptyDateChip}>
+                  <Text style={[styles.dashText, { fontFamily: FONT }]}>—</Text>
+                </View>
+              )}
             </View>
           </View>
         );
       })}
+      
       {items.length === 0 && (
-        <Text style={[styles.noDataText, { fontFamily: FONT }]}>Немає даних</Text>
+        <Text style={[styles.noDataText, { fontFamily: FONT }]}>
+          Немає даних
+        </Text>
       )}
     </View>
   </View>
 );
 
-const PilotSelector = ({ pilots, selectedPilot, onSelect, visible, onClose }) => (
-  <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-    <View style={styles.modalBackdrop}>
-      <View style={styles.modalCard}>
-        <Text style={[styles.modalTitle, { fontFamily: FONT }]}>Оберіть пілота</Text>
-        
-        <FlatList
-          data={pilots}
-          keyExtractor={(item, idx) => item + '_' + idx}
-          style={{ maxHeight: 400 }}
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              onPress={() => onSelect(item)}
-              style={[
-                styles.pilotRow,
-                selectedPilot === item && styles.selectedPilotRow
-              ]}
-            >
-              <Text style={[
-                styles.pilotText,
-                { fontFamily: FONT },
-                selectedPilot === item && styles.selectedPilotText
-              ]}>
-                {item}
-              </Text>
-            </TouchableOpacity>
-          )}
-        />
+const PilotSelector = ({ pilots, selectedPilot, onSelect, visible, onClose }) => {
+  const cleanPilotName = (name) => {
+    return name.replace(/^.*?\d{4}\s*\d{2}:\d{2}:\d{2}.*?\)\s*/, '').trim();
+  };
 
-        <ActionButton
-          title="ЗАКРИТИ"
-          onPress={onClose}
-          style={{ backgroundColor: '#7B7B7B', marginTop: 10 }}
-        />
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={styles.modalBackdrop}>
+        <View style={styles.modalCard}>
+          <FlatList
+            data={pilots}
+            keyExtractor={(item, idx) => item + '_' + idx}
+            style={{ maxHeight: 400 }}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                onPress={() => onSelect(item)}
+                style={[
+                  styles.pilotRow,
+                  selectedPilot === item && styles.selectedPilotRow
+                ]}
+              >
+                <Text style={[
+                  styles.pilotText,
+                  { fontFamily: FONT },
+                  selectedPilot === item && styles.selectedPilotText
+                ]}>
+                  {cleanPilotName(item)}
+                </Text>
+              </TouchableOpacity>
+            )}
+          />
+
+          <TouchableOpacity
+            style={styles.closeButton}
+            onPress={onClose}
+          >
+            <Text style={[styles.closeButtonText, { fontFamily: FONT }]}>ЗАКРИТИ</Text>
+          </TouchableOpacity>
+        </View>
       </View>
-    </View>
-  </Modal>
-);
+    </Modal>
+  );
+};
 
 export default function BreaksMU({ route, navigation }) {
   const { auth } = useContext(AuthCtx);
@@ -117,32 +127,30 @@ export default function BreaksMU({ route, navigation }) {
   const [pilots, setPilots] = useState([]);
   const [showPilotSelector, setShowPilotSelector] = useState(false);
 
- // Завантаження списку пілотів для адміна
-useEffect(() => {
-  const loadPilots = async () => {
-    if (!isAdmin || !auth?.token) return;
-    
-    try {
-      // Спочатку пробуємо завантажити з валідації
-      const result = await api.getValidationPilots(auth.token);
-      if (result?.ok && result.pilots) {
-        setPilots(result.pilots);
-        return;
-      }
+  // Завантаження списку пілотів для адміна
+  useEffect(() => {
+    const loadPilots = async () => {
+      if (!isAdmin || !auth?.token) return;
       
-      // Fallback до getAllPilots
-      const fallbackResult = await api.getAllPilots(auth.token);
-      if (fallbackResult?.ok && fallbackResult.pilots) {
-        setPilots(fallbackResult.pilots);
+      try {
+        const result = await api.getValidationPilots(auth.token);
+        if (result?.ok && result.pilots) {
+          setPilots(result.pilots);
+          return;
+        }
+        
+        const fallbackResult = await api.getAllPilots(auth.token);
+        if (fallbackResult?.ok && fallbackResult.pilots) {
+          setPilots(fallbackResult.pilots);
+        }
+      } catch (error) {
+        console.warn('Помилка завантаження списку льотчиків:', error);
+        setPilots([]);
       }
-    } catch (error) {
-      console.warn('Помилка завантаження списку льотчиків:', error);
-      setPilots([]);
-    }
-  };
-  
-  loadPilots();
-}, [isAdmin, auth?.token]);
+    };
+    
+    loadPilots();
+  }, [isAdmin, auth?.token]);
 
   // Завантаження даних перерв
   const loadData = async () => {
@@ -156,9 +164,7 @@ useEffect(() => {
         throw new Error(result?.error || 'Помилка завантаження даних');
       }
       
-      // Логування для діагностики
       console.log('Дані з API:', JSON.stringify(result.data, null, 2));
-      
       setData(result.data || {});
     } catch (error) {
       Alert.alert('Помилка', String(error.message || error));
@@ -177,11 +183,25 @@ useEffect(() => {
     setShowPilotSelector(false);
   };
 
+  const cleanPilotName = (name) => {
+    return name.replace(/^.*?\d{4}\s*\d{2}:\d{2}:\d{2}.*?\)\s*/, '').trim();
+  };
+
   if (loading) {
     return (
-      <SafeAreaView style={styles.safe}>
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <Text style={[styles.title, { fontFamily: FONT }]}>Перерви за МУ</Text>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <Text style={[styles.backButtonText, { fontFamily: FONT }]}>Назад</Text>
+          </TouchableOpacity>
+        </View>
+        
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={DARK} />
+          <ActivityIndicator size="large" color="#4A90E2" />
           <Text style={[styles.loadingText, { fontFamily: FONT }]}>
             Завантаження даних перерв...
           </Text>
@@ -192,41 +212,43 @@ useEffect(() => {
 
   const muData = data.mu || {};
   const muTypes = ['ДПМУ', 'ДСМУ', 'ДВМП', 'НПМУ', 'НСМУ', 'НВМП'];
+  const currentIsAdmin = isAdmin || (auth?.role === 'admin');
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <Text style={[styles.title, { fontFamily: FONT }]}>Перерви за МУ</Text>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Text style={[styles.backBtnText, { fontFamily: FONT }]}>Назад</Text>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+        >
+          <Text style={[styles.backButtonText, { fontFamily: FONT }]}>Назад</Text>
         </TouchableOpacity>
       </View>
 
-      {isAdmin && (
-        <View style={styles.pilotSelectorContainer}>
-          <Text style={[styles.selectorLabel, { fontFamily: FONT }]}>Льотчик:</Text>
-          <TouchableOpacity 
-            style={styles.pilotSelectorBtn}
+      {currentIsAdmin && (
+        <View style={styles.filterContainer}>
+          <TouchableOpacity
+            style={styles.filterButton}
             onPress={() => setShowPilotSelector(true)}
           >
-            <Text style={[styles.pilotSelectorText, { fontFamily: FONT }]}>
-              {selectedPilot || 'Оберіть льотчика'}
+            <Text style={[styles.filterButtonText, { fontFamily: FONT }]}>
+              {cleanPilotName(selectedPilot) || 'Оберіть льотчика'}
             </Text>
-            <Text style={styles.selectorCaret}>▾</Text>
           </TouchableOpacity>
         </View>
       )}
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {muTypes.map(muType => (
-          <DataCard
-            key={muType}
-            title={muType}
-            items={muData[muType] || []}
-          />
-        ))}
-        
-        <View style={{ height: 20 }} />
+      <ScrollView style={styles.scrollView}>
+        <View style={styles.content}>
+          {muTypes.map(muType => (
+            <DataCard
+              key={muType}
+              title={muType}
+              items={muData[muType] || []}
+            />
+          ))}
+        </View>
       </ScrollView>
 
       <PilotSelector
@@ -241,138 +263,124 @@ useEffect(() => {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#F4F6F8' },
-  
-  loadingContainer: {
+  container: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: '#F4F6F8',
   },
-  loadingText: {
-    marginTop: 10,
-    fontSize: 16,
-    color: '#6B7280',
-  },
-
   header: {
-    paddingHorizontal: 16,
-    paddingTop: Platform.OS === 'android' ? 8 : 6,
-    paddingBottom: 8,
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
   },
   title: {
     fontSize: 24,
-    fontWeight: '800',
-    color: '#111827',
+    fontWeight: '600',
+    color: '#1F2937',
   },
-  backBtn: {
-    backgroundColor: DARK,
-    borderRadius: 12,
+  backButton: {
+    backgroundColor: '#6B7280',
     paddingHorizontal: 16,
     paddingVertical: 8,
+    borderRadius: 8,
   },
-  backBtnText: {
-    color: '#fff',
+  backButtonText: {
+    color: '#FFFFFF',
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '500',
   },
-
-  pilotSelectorContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  filterContainer: {
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  filterButton: {
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 8,
     paddingHorizontal: 16,
-    paddingBottom: 12,
-    gap: 12,
+    paddingVertical: 12,
+    backgroundColor: '#F9FAFB',
   },
-  selectorLabel: {
+  filterButtonText: {
     fontSize: 16,
-    fontWeight: '600',
     color: '#374151',
   },
-  pilotSelectorBtn: {
+  scrollView: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
   },
-  pilotSelectorText: {
-    fontSize: 16,
-    color: '#111827',
-  },
-  selectorCaret: {
-    fontSize: 16,
-    color: '#6B7280',
-  },
-
   content: {
-    flex: 1,
-    paddingHorizontal: 16,
+    padding: 16,
   },
-
   card: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
     padding: 16,
     marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
     shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
     shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    alignItems: 'center',
   },
   cardTitle: {
     fontSize: 18,
-    fontWeight: '700',
-    color: '#111827',
+    fontWeight: '600',
+    color: '#1F2937',
     marginBottom: 12,
+    textAlign: 'center',
   },
-  
   itemsContainer: {
+    width: '100%',
     gap: 8,
   },
   itemRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    paddingVertical: 4,
   },
   aircraftText: {
     fontSize: 16,
     color: '#374151',
     flex: 1,
   },
+  dateSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   dateChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
     minWidth: 120,
     alignItems: 'center',
+  },
+  emptyDateChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+    minWidth: 120,
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderStyle: 'dashed',
   },
   dateText: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 16,
+    fontWeight: '500',
   },
-  noDateContainer: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    minWidth: 120,
-    alignItems: 'center',
-    backgroundColor: 'transparent',
-  },
-  noDateText: {
-    fontSize: 14,
+  dashText: {
+    fontSize: 24,
     color: '#9CA3AF',
-    fontStyle: 'italic',
   },
   noDataText: {
     fontSize: 16,
@@ -380,31 +388,33 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontStyle: 'italic',
   },
-
-  // Modal styles
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#6B7280',
+    marginTop: 16,
+  },
   modalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
-    padding: 20,
+    alignItems: 'center',
   },
   modalCard: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
     padding: 20,
-    maxHeight: '80%',
+    margin: 20,
+    maxWidth: '90%',
+    minWidth: '80%',
   },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    marginBottom: 16,
-    color: '#111827',
-    textAlign: 'center',
-  },
-  
   pilotRow: {
     paddingVertical: 12,
-    paddingHorizontal: 8,
+    paddingHorizontal: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#F3F4F6',
   },
@@ -413,13 +423,24 @@ const styles = StyleSheet.create({
   },
   pilotText: {
     fontSize: 16,
-    color: '#111827',
+    color: '#374151',
   },
   selectedPilotText: {
-    fontWeight: '600',
     color: '#1D4ED8',
+    fontWeight: '500',
   },
-
+  closeButton: {
+    backgroundColor: '#6B7280',
+    paddingVertical: 12,
+    borderRadius: 8,
+    marginTop: 16,
+    alignItems: 'center',
+  },
+  closeButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '500',
+  },
   btn: {
     borderRadius: 14,
     paddingVertical: 14,
@@ -431,9 +452,8 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   btnText: {
-    color: '#fff',
+    color: '#FFFFFF',
     fontSize: 18,
     fontWeight: '800',
-    letterSpacing: 0.3,
   },
 });
