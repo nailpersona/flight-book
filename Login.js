@@ -1,13 +1,12 @@
-﻿import React, { useContext, useState } from 'react';
+import React, { useContext, useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, Alert, StyleSheet,
-  Platform, SafeAreaView, ActivityIndicator, Image
+  Platform, SafeAreaView, ActivityIndicator, Image, KeyboardAvoidingView,
+  ScrollView
 } from 'react-native';
-import { AuthCtx } from './App';
+import { AuthCtx } from './contexts';
+import { Colors, FONT, Shadows, BorderRadius, Spacing } from './theme';
 import api from './api';
-
-const FONT = 'NewsCycle-Regular';
-const DARK = '#333';
 
 export default function Login({ navigation }) {
   const { setAuth } = useContext(AuthCtx);
@@ -15,6 +14,7 @@ export default function Login({ navigation }) {
   const [pass, setPass] = useState('');
   const [showPass, setShowPass] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [focused, setFocused] = useState(null);
 
   const onLogin = async () => {
     if (!email.trim() || !pass.trim()) {
@@ -25,7 +25,6 @@ export default function Login({ navigation }) {
       const j = await api.login(email.trim(), pass.trim());
       if (!j?.ok) throw new Error(j?.error || 'Помилка входу');
 
-      // зберігаємо сесію на 7 днів локально
       const WEEK = 7 * 24 * 60 * 60 * 1000;
       const authObj = {
         token: j.token,
@@ -38,10 +37,7 @@ export default function Login({ navigation }) {
 
       navigation.reset({
         index: 0,
-        routes: [{
-          name: 'Main',
-          params: { token: j.token, email: authObj.email, role: authObj.role, pib: authObj.pib }
-        }]
+        routes: [{ name: 'Tabs' }],
       });
     } catch (e) {
       Alert.alert('Помилка', String(e.message || e));
@@ -52,74 +48,194 @@ export default function Login({ navigation }) {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <View style={styles.container}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView
+          contentContainerStyle={styles.scroll}
+          keyboardShouldPersistTaps="handled"
+        >
+          {/* Logo */}
+          <View style={styles.logoWrap}>
+            <Image
+              source={require('./assets/logo.png')}
+              style={styles.logo}
+              resizeMode="contain"
+            />
+          </View>
 
-        {/* ЛОГОТИП */}
-        <View style={styles.logoWrap}>
-          <Image source={require('./assets/logo.png')} style={styles.logo} resizeMode="contain" />
-        </View>
+          {/* Card */}
+          <View style={styles.card}>
+            <Text style={styles.title}>Вхід</Text>
+            <Text style={styles.subtitle}>Авторизуйтесь для продовження</Text>
 
-        <Text style={styles.title}>Вхід</Text>
+            {/* Email */}
+            <Text style={styles.label}>Email</Text>
+            <View style={[
+              styles.inputWrap,
+              focused === 'email' && styles.inputFocused,
+            ]}>
+              <TextInput
+                value={email}
+                onChangeText={setEmail}
+                placeholder="you@example.com"
+                placeholderTextColor={Colors.textTertiary}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                style={styles.input}
+                onFocus={() => setFocused('email')}
+                onBlur={() => setFocused(null)}
+              />
+            </View>
 
-        <Text style={styles.label}>Email</Text>
-        <TextInput
-          value={email}
-          onChangeText={setEmail}
-          placeholder="you@example.com"
-          placeholderTextColor="#9AA0A6"
-          keyboardType="email-address"
-          autoCapitalize="none"
-          style={styles.input}
-        />
+            {/* Password */}
+            <Text style={styles.label}>Пароль</Text>
+            <View style={[
+              styles.inputWrap,
+              focused === 'pass' && styles.inputFocused,
+            ]}>
+              <TextInput
+                value={pass}
+                onChangeText={setPass}
+                placeholder="Введіть пароль"
+                placeholderTextColor={Colors.textTertiary}
+                secureTextEntry={!showPass}
+                style={[styles.input, { flex: 1 }]}
+                onFocus={() => setFocused('pass')}
+                onBlur={() => setFocused(null)}
+              />
+              <TouchableOpacity
+                onPress={() => setShowPass(s => !s)}
+                style={styles.eyeBtn}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.eyeText}>{showPass ? '🙈' : '👁️'}</Text>
+              </TouchableOpacity>
+            </View>
 
-        <Text style={styles.label}>Пароль</Text>
-        <View style={{ position: 'relative' }}>
-          <TextInput
-            value={pass}
-            onChangeText={setPass}
-            placeholder="********"
-            placeholderTextColor="#9AA0A6"
-            secureTextEntry={!showPass}
-            style={[styles.input, { paddingRight: 42 }]}
-          />
-          <TouchableOpacity
-            onPress={() => setShowPass(s => !s)}
-            style={styles.eyeBtn}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.eyeText}>{showPass ? '🙈' : '👁️'}</Text>
-          </TouchableOpacity>
-        </View>
-
-        <TouchableOpacity style={styles.btn} onPress={onLogin} activeOpacity={0.9} disabled={busy}>
-          {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>УВІЙТИ</Text>}
-        </TouchableOpacity>
-      </View>
+            {/* Login button */}
+            <TouchableOpacity
+              style={[styles.btn, busy && { opacity: 0.7 }]}
+              onPress={onLogin}
+              activeOpacity={0.85}
+              disabled={busy}
+            >
+              {busy
+                ? <ActivityIndicator color={Colors.textInverse} />
+                : <Text style={styles.btnText}>Увійти</Text>
+              }
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#F4F6F8' },
-  container: { paddingHorizontal: 16, paddingTop: Platform.OS === 'android' ? 8 : 6 },
+  safe: {
+    flex: 1,
+    backgroundColor: Colors.bgTertiary,
+  },
+  scroll: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: 40,
+  },
 
-  logoWrap: { alignItems: 'center', marginTop: 12, marginBottom: 8 },
-  logo: { width: 140, height: 140 },
+  // Logo
+  logoWrap: {
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  logo: {
+    width: 120,
+    height: 120,
+  },
 
-  title: { fontFamily: FONT, fontSize: 28, fontWeight: '800', color: '#111827', marginBottom: 18, textAlign: 'center' },
-  label: { fontFamily: FONT, fontSize: 15, color: '#111827', marginTop: 10, marginBottom: 6 },
+  // Card
+  card: {
+    backgroundColor: Colors.bgPrimary,
+    borderRadius: BorderRadius.xl,
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: 28,
+    ...Shadows.large,
+  },
+
+  // Typography
+  title: {
+    fontFamily: FONT,
+    fontSize: 26,
+    fontWeight: '400',
+    color: Colors.textPrimary,
+    textAlign: 'center',
+  },
+  subtitle: {
+    fontFamily: FONT,
+    fontSize: 14,
+    fontWeight: '400',
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    marginTop: 4,
+    marginBottom: 24,
+  },
+  label: {
+    fontFamily: FONT,
+    fontSize: 14,
+    fontWeight: '400',
+    color: Colors.textSecondary,
+    marginBottom: 6,
+    marginTop: 14,
+  },
+
+  // Inputs
+  inputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.bgSecondary,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  inputFocused: {
+    borderColor: Colors.primary,
+  },
   input: {
-    fontFamily: FONT, fontSize: 16, color: '#111',
-    backgroundColor: '#fff', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12,
-    borderWidth: 1, borderColor: '#E1E5EA'
+    flex: 1,
+    fontFamily: FONT,
+    fontSize: 16,
+    fontWeight: '400',
+    color: Colors.textPrimary,
+    paddingHorizontal: 14,
+    paddingVertical: Platform.OS === 'ios' ? 14 : 12,
   },
-  eyeBtn: { position: 'absolute', right: 10, top: 0, bottom: 0, justifyContent: 'center', paddingHorizontal: 6 },
-  eyeText: { fontSize: 18 },
 
-  btn: {
-    marginTop: 16, backgroundColor: DARK, borderRadius: 14, paddingVertical: 14,
-    alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 }, elevation: 3
+  // Eye toggle
+  eyeBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
   },
-  btnText: { color: '#fff', fontFamily: FONT, fontSize: 18, fontWeight: '800', letterSpacing: 0.3 }
+  eyeText: {
+    fontSize: 18,
+  },
+
+  // Button
+  btn: {
+    marginTop: 24,
+    backgroundColor: Colors.primary,
+    borderRadius: BorderRadius.lg,
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...Shadows.medium,
+  },
+  btnText: {
+    color: Colors.textInverse,
+    fontFamily: FONT,
+    fontSize: 16,
+    fontWeight: '400',
+    letterSpacing: 0.3,
+  },
 });

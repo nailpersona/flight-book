@@ -5,34 +5,28 @@ import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import * as Font from 'expo-font';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { setupChannels, requestPermissions, checkAndNotify } from './notifications';
 
 // Екрани
-import MainScreen from './Main';
-import ProfileScreen from './Profile';
-import SettingsScreen from './Settings';
-import AdminUsersScreen from './AdminUsers';
-import AdminSettingsScreen from './AdminSettings';
 import LoginScreen from './Login';
-import MyRecordsScreen from './MyRecords';
-import BreaksMUScreen from './BreaksMU';
-import BreaksLPScreen from './BreaksLP';
-import CommissionTableScreen from './CommissionTable';
+import FixedTabNavigator from './FixedTabNavigator';
 
-// ====== КОНТЕКСТ АВТЕНТИФІКАЦІЇ ======
-export const AuthCtx = createContext({ auth: null, setAuth: () => {} });
+// Тема
+import { Colors, FONT } from './theme';
+// Контексти
+import { AuthCtx, InboxBadgeCtx, rootNavigationRef } from './contexts';
 
 const Stack = createNativeStackNavigator();
 
 const navTheme = {
   ...DefaultTheme,
-  colors: { ...DefaultTheme.colors, background: '#F4F6F8' },
+  colors: { ...DefaultTheme.colors, background: Colors.bgTertiary },
 };
-
-const FONT = 'NewsCycle-Regular';
 
 export default function App() {
   const [ready, setReady] = useState(false);
   const [auth, setAuth] = useState(null); // {token, role, pib, email, expires}
+  const [inboxBadge, setInboxBadge] = useState(0);
 
   // завантаження шрифту + відновлення сесії
   useEffect(() => {
@@ -66,6 +60,9 @@ export default function App() {
               // якщо немає expires — вважаємо валідним (задля сумісності),
               // якщо є — має бути > now
               if (!parsed.expires || parsed.expires > now) {
+                // Оновлюємо expires на +7 днів від зараз (активність продовжує сесію)
+                const WEEK = 7 * 24 * 60 * 60 * 1000;
+                parsed.expires = now + WEEK;
                 setAuth(parsed);
               }
             }
@@ -88,43 +85,57 @@ export default function App() {
     })();
   }, [auth]);
 
+  // Push-повідомлення про закінчення термінів + бейдж
+  useEffect(() => {
+    if (!auth?.pib) return;
+    (async () => {
+      await setupChannels();
+      const granted = await requestPermissions();
+      if (granted) {
+        const unread = await checkAndNotify(auth.pib);
+        setInboxBadge(unread);
+      }
+    })();
+  }, [auth?.pib]);
+
   if (!ready) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F4F6F8' }}>
-        <ActivityIndicator size="large" />
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.bgTertiary }}>
+        <ActivityIndicator size="large" color={Colors.primary} />
       </View>
     );
   }
 
   return (
     <AuthCtx.Provider value={{ auth, setAuth }}>
-      <NavigationContainer theme={navTheme}>
+    <InboxBadgeCtx.Provider value={{ badge: inboxBadge, setBadge: setInboxBadge }}>
+      <NavigationContainer ref={rootNavigationRef} theme={navTheme}>
         <StatusBar
           barStyle={Platform.OS === 'ios' ? 'dark-content' : 'light-content'}
-          backgroundColor="#222"
+          backgroundColor={Colors.primary}
         />
         <Stack.Navigator
-          initialRouteName={auth?.token ? 'Main' : 'Login'}
+          initialRouteName={auth?.token ? 'Tabs' : 'Login'}
           screenOptions={{
             headerShown: false,
             contentStyle: {
-              backgroundColor: '#F4F6F8',
-              paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) + 6 : 6,
+              backgroundColor: Colors.bgTertiary,
             },
           }}
         >
           <Stack.Screen name="Login" component={LoginScreen} />
-          <Stack.Screen name="Main" component={MainScreen} />
-          <Stack.Screen name="Profile" component={ProfileScreen} />
-          <Stack.Screen name="Settings" component={SettingsScreen} />
-          <Stack.Screen name="AdminUsers" component={AdminUsersScreen} />
-          <Stack.Screen name="AdminSettings" component={AdminSettingsScreen} />
-          <Stack.Screen name="MyRecords" component={MyRecordsScreen} />
-          <Stack.Screen name="BreaksMU" component={BreaksMUScreen} />
-          <Stack.Screen name="BreaksLP" component={BreaksLPScreen} />
-          <Stack.Screen name="CommissionTable" component={CommissionTableScreen} />
+          <Stack.Screen
+            name="Tabs"
+            component={FixedTabNavigator}
+            options={{
+              contentStyle: {
+                backgroundColor: Colors.bgTertiary,
+              },
+            }}
+          />
         </Stack.Navigator>
       </NavigationContainer>
+    </InboxBadgeCtx.Provider>
     </AuthCtx.Provider>
   );
 }

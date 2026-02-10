@@ -6,7 +6,7 @@ import {
 import CustomCalendar from './components/CustomCalendar';
 import { Ionicons } from '@expo/vector-icons';
 import { AuthCtx } from './contexts';
-import { getBreaksDataFromSupabase, getAllPilotsFromSupabase, updateCommissionDateInSupabase } from './supabaseData';
+import { getAnnualChecksFromSupabase, updateAnnualCheckDateInSupabase, getAllPilotsFromSupabase } from './supabaseData';
 import { Colors, Shadows, BorderRadius, Spacing, FONT } from './theme';
 
 // Soft status colors
@@ -19,15 +19,27 @@ const STATUS = {
 
 const getStatus = (color) => STATUS[color] || STATUS.gray;
 
-// Simple commission categories (single-row or multi-row)
-const SIMPLE_CATEGORIES = [
-  'Аварійне залишення',
-  'Ст. 205 ПРІАЗ',
-  'Відпустка',
-  'Стрибки з парашутом',
-];
+// Display labels for check types
+const CHECK_LABELS = {
+  'ТП': 'Техніка пілотування',
+  'ТП_дублюючі': 'ТП за дублюючими',
+  'навігація': 'Повітряна навігація',
+  'БЗ': 'Бойове застосування',
+  'інструкторська': 'Інструкторська',
+  'Захід за приладами': 'Захід за приладами',
+  'ТП з ІВД': 'ТП з ІВД',
+};
 
-const MULTI_ROW = new Set(['Ст. 205 ПРІАЗ']);
+// Order of check types
+const CHECK_ORDER = [
+  'ТП',
+  'Захід за приладами',
+  'ТП_дублюючі',
+  'ТП з ІВД',
+  'навігація',
+  'БЗ',
+  'інструкторська',
+];
 
 // Pilot selector modal
 const PilotSelector = ({ pilots, selectedPilot, onSelect, visible, onClose }) => {
@@ -65,18 +77,18 @@ const PilotSelector = ({ pilots, selectedPilot, onSelect, visible, onClose }) =>
   );
 };
 
-const CommissionTable = ({ navigation, route }) => {
+export default function AnnualChecks({ navigation, route }) {
   const { auth } = useContext(AuthCtx);
   const { pib: routePib, isAdmin } = route?.params || {};
 
-  const [data, setData] = useState({});
+  const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [pilots, setPilots] = useState([]);
   const [showPilotSelector, setShowPilotSelector] = useState(false);
   const [selectedPilot, setSelectedPilot] = useState(routePib || auth?.pib || '');
 
   // Date editing
-  const [editingItem, setEditingItem] = useState(null);
+  const [editingCheckType, setEditingCheckType] = useState(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date());
 
@@ -95,12 +107,12 @@ const CommissionTable = ({ navigation, route }) => {
     if (!selectedPilot) return;
     try {
       setLoading(true);
-      const res = await getBreaksDataFromSupabase(selectedPilot);
+      const res = await getAnnualChecksFromSupabase(selectedPilot);
       if (!res?.ok) throw new Error(res?.error || 'Помилка');
-      setData(res.data || {});
+      setData(res.checks || []);
     } catch (e) {
       Alert.alert('Помилка', String(e.message || e));
-      setData({});
+      setData([]);
     } finally {
       setLoading(false);
     }
@@ -110,11 +122,10 @@ const CommissionTable = ({ navigation, route }) => {
 
   const cleanName = (n) => n.replace(/^.*?\d{4}\s*\d{2}:\d{2}:\d{2}.*?\)\s*/, '').trim();
   const currentIsAdmin = isAdmin || (auth?.role === 'admin');
-  const commission = data.commission || {};
 
   // Date editing handlers
-  const handleEditDate = (category, aircraft, currentDate) => {
-    setEditingItem({ category, aircraft });
+  const handleEditDate = (checkType, currentDate) => {
+    setEditingCheckType(checkType);
     if (currentDate && currentDate.trim()) {
       try {
         const parts = currentDate.split('.');
@@ -127,16 +138,16 @@ const CommissionTable = ({ navigation, route }) => {
   };
 
   const onCalendarSelect = async (date) => {
-    if (!date || !editingItem) return;
+    if (!date || !editingCheckType) return;
     const day = date.getDate().toString().padStart(2, '0');
     const month = (date.getMonth() + 1).toString().padStart(2, '0');
     const year = date.getFullYear();
     const formatted = `${day}.${month}.${year}`;
     setShowDatePicker(false);
-    setEditingItem(null);
+    setEditingCheckType(null);
     try {
-      const result = await updateCommissionDateInSupabase(
-        selectedPilot, editingItem.category, formatted,
+      const result = await updateAnnualCheckDateInSupabase(
+        selectedPilot, editingCheckType, formatted,
       );
       if (result?.ok) {
         loadData();
@@ -148,14 +159,6 @@ const CommissionTable = ({ navigation, route }) => {
     }
   };
 
-  // ЛЛК/УМО data
-  const llkUmo = commission['ЛЛК/УМО'] || {};
-  const llkData = llkUmo.llk;
-  const umoData = llkUmo.umo;
-  const llkStatus = getStatus(llkData?.color);
-  const umoStatus = getStatus(umoData?.color);
-  const nextStatus = getStatus(llkUmo.nextColor);
-
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
@@ -163,7 +166,7 @@ const CommissionTable = ({ navigation, route }) => {
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
             <Ionicons name="chevron-back" size={22} color={Colors.textPrimary} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Таблиця комісування</Text>
+          <Text style={styles.headerTitle}>Рiчнi перевiрки</Text>
           <View style={{ width: 36 }} />
         </View>
         <View style={styles.centered}>
@@ -173,6 +176,10 @@ const CommissionTable = ({ navigation, route }) => {
     );
   }
 
+  // Build a map from check_type to data for quick lookup
+  const dataMap = {};
+  data.forEach(item => { dataMap[item.check_type] = item; });
+
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
@@ -180,7 +187,7 @@ const CommissionTable = ({ navigation, route }) => {
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={22} color={Colors.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Таблиця комісування</Text>
+        <Text style={styles.headerTitle}>Рiчнi перевiрки</Text>
         <View style={{ width: 36 }} />
       </View>
 
@@ -200,86 +207,48 @@ const CommissionTable = ({ navigation, route }) => {
 
       {/* Column headers */}
       <View style={styles.columnHeaders}>
-        <Text style={styles.colHeaderLeft}></Text>
-        <Text style={styles.colHeaderCenter}>Дата</Text>
-        <Text style={styles.colHeaderRight}>Дiйсний до</Text>
+        <Text style={styles.colHeaderLeft}>Перевiрка</Text>
+        <Text style={styles.colHeaderRight}>Дата</Text>
         <View style={{ width: 32 }} />
       </View>
 
       <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
-
-        {/* Simple categories before ЛЛК/УМО */}
-        {['Аварійне залишення', 'Ст. 205 ПРІАЗ'].map((cat) => renderSimpleSection(cat, commission, handleEditDate))}
-
-        {/* ЛЛК / УМО — special block */}
         <View style={styles.section}>
-          {/* Section header with ЛЛК / УМО labels */}
-          <View style={styles.llkUmoSectionHeader}>
-            <View style={{ flex: 1 }} />
-            <View style={styles.llkUmoLabelGroup}>
-              <Text style={styles.llkUmoHeaderLabel}>ЛЛК</Text>
-              <View style={{ width: 28 }} />
-            </View>
-            <View style={styles.llkUmoLabelGroup}>
-              <Text style={styles.llkUmoHeaderLabel}>УМО</Text>
-              <View style={{ width: 28 }} />
-            </View>
-          </View>
+          {CHECK_ORDER.map((checkType, idx) => {
+            const item = dataMap[checkType];
+            const s = getStatus(item?.color || 'gray');
+            const label = CHECK_LABELS[checkType] || checkType;
+            const isLast = idx === CHECK_ORDER.length - 1;
 
-          {/* Dates row */}
-          <View style={styles.llkUmoRow}>
-            <View style={styles.rowLeft}>
-              <View style={[styles.dot, { backgroundColor: (llkData || umoData) ? nextStatus.dot : STATUS.gray.dot }]} />
-            </View>
-            <View style={styles.llkUmoDates}>
-              {/* ЛЛК date + edit */}
-              <View style={styles.llkUmoDateItem}>
-                <TouchableOpacity
-                  style={[styles.dateBox, { backgroundColor: llkStatus.bg }]}
-                  onPress={() => handleEditDate('ЛЛК', null, llkData?.date || '')}
-                >
-                  <Text style={[styles.dateText, { color: llkStatus.text }]}>
-                    {llkData?.date || '—'}
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.editBtn}
-                  onPress={() => handleEditDate('ЛЛК', null, llkData?.date || '')}
-                >
-                  <Ionicons name="create-outline" size={14} color={Colors.textTertiary} />
-                </TouchableOpacity>
+            return (
+              <View key={checkType} style={[styles.row, isLast && styles.rowLast]}>
+                {/* Check name with status dot */}
+                <View style={styles.rowLeft}>
+                  <View style={[styles.dot, { backgroundColor: s.dot }]} />
+                  <Text style={styles.checkName}>{label}</Text>
+                </View>
+
+                {/* Date + edit */}
+                <View style={styles.rowRight}>
+                  <TouchableOpacity
+                    style={[styles.dateBox, { backgroundColor: s.bg }]}
+                    onPress={() => handleEditDate(checkType, item?.date || '')}
+                  >
+                    <Text style={[styles.dateText, { color: s.text }]}>
+                      {item?.date || '—'}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.editBtn}
+                    onPress={() => handleEditDate(checkType, item?.date || '')}
+                  >
+                    <Ionicons name="create-outline" size={16} color={Colors.textSecondary} />
+                  </TouchableOpacity>
+                </View>
               </View>
-
-              {/* УМО date + edit */}
-              <View style={styles.llkUmoDateItem}>
-                <TouchableOpacity
-                  style={[styles.dateBox, { backgroundColor: umoStatus.bg }]}
-                  onPress={() => handleEditDate('УМО', null, umoData?.date || '')}
-                >
-                  <Text style={[styles.dateText, { color: umoStatus.text }]}>
-                    {umoData?.date || '—'}
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.editBtn}
-                  onPress={() => handleEditDate('УМО', null, umoData?.date || '')}
-                >
-                  <Ionicons name="create-outline" size={14} color={Colors.textTertiary} />
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-
-          {/* Next due line */}
-          {llkUmo.nextType && (
-            <Text style={styles.nextDueText}>
-              Наступне {llkUmo.nextType}: {llkUmo.nextDate}
-            </Text>
-          )}
+            );
+          })}
         </View>
-
-        {/* Simple categories after ЛЛК/УМО */}
-        {['Відпустка', 'Стрибки з парашутом'].map((cat) => renderSimpleSection(cat, commission, handleEditDate))}
 
         <View style={{ height: 32 }} />
       </ScrollView>
@@ -297,79 +266,11 @@ const CommissionTable = ({ navigation, route }) => {
         visible={showDatePicker}
         value={selectedDate}
         onSelect={onCalendarSelect}
-        onClose={() => { setShowDatePicker(false); setEditingItem(null); }}
+        onClose={() => { setShowDatePicker(false); setEditingCheckType(null); }}
       />
     </SafeAreaView>
   );
-};
-
-// Render a simple (non-ЛЛК/УМО) section
-function renderSimpleSection(cat, commission, handleEditDate) {
-  const items = commission[cat] || [];
-  const isMulti = MULTI_ROW.has(cat);
-
-  return (
-    <View key={cat} style={styles.section}>
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>{cat}</Text>
-      </View>
-
-      {isMulti ? (
-        items.length > 0 ? items.map((item, idx) => {
-          const s = getStatus(item.color);
-          return (
-            <View key={idx} style={[styles.row, idx === items.length - 1 && styles.rowLast]}>
-              <View style={styles.rowLeft}>
-                <View style={[styles.dot, { backgroundColor: s.dot }]} />
-                <Text style={styles.labelText}>{item.aircraft || '—'}</Text>
-              </View>
-              <View style={styles.rowRight}>
-                <View style={[styles.dateBox, { backgroundColor: s.bg }]}>
-                  <Text style={[styles.dateText, { color: s.text }]}>{item.date || '—'}</Text>
-                </View>
-                <View style={[styles.dateBox, { backgroundColor: s.bg }]}>
-                  <Text style={[styles.dateText, { color: s.text }]}>{item.expiryDate || '—'}</Text>
-                </View>
-                <TouchableOpacity style={styles.editBtn} onPress={() => handleEditDate(cat, item.aircraft, item.date)}>
-                  <Ionicons name="create-outline" size={16} color={Colors.textSecondary} />
-                </TouchableOpacity>
-              </View>
-            </View>
-          );
-        }) : (
-          <View style={styles.emptyRow}>
-            <Text style={styles.emptyText}>Немає даних</Text>
-          </View>
-        )
-      ) : (
-        (() => {
-          const item = items.length > 0 ? items[0] : null;
-          const s = getStatus(item?.color);
-          return (
-            <View style={[styles.row, styles.rowLast]}>
-              <View style={styles.rowLeft}>
-                <View style={[styles.dot, { backgroundColor: s.dot }]} />
-              </View>
-              <View style={styles.rowRight}>
-                <View style={[styles.dateBox, { backgroundColor: s.bg }]}>
-                  <Text style={[styles.dateText, { color: s.text }]}>{item?.date || '—'}</Text>
-                </View>
-                <View style={[styles.dateBox, { backgroundColor: s.bg }]}>
-                  <Text style={[styles.dateText, { color: s.text }]}>{item?.expiryDate || '—'}</Text>
-                </View>
-                <TouchableOpacity style={styles.editBtn} onPress={() => handleEditDate(cat, null, item?.date || '')}>
-                  <Ionicons name="create-outline" size={16} color={Colors.textSecondary} />
-                </TouchableOpacity>
-              </View>
-            </View>
-          );
-        })()
-      )}
-    </View>
-  );
 }
-
-export default CommissionTable;
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bgSecondary },
@@ -398,8 +299,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.lg, paddingVertical: Spacing.sm, marginTop: Spacing.sm,
   },
   colHeaderLeft: { flex: 1, fontFamily: FONT, fontSize: 12, fontWeight: '400', color: Colors.textTertiary },
-  colHeaderCenter: { width: 100, fontFamily: FONT, fontSize: 12, fontWeight: '400', color: Colors.textTertiary, textAlign: 'center' },
-  colHeaderRight: { width: 100, fontFamily: FONT, fontSize: 12, fontWeight: '400', color: Colors.textTertiary, textAlign: 'center', marginLeft: 6 },
+  colHeaderRight: { width: 100, fontFamily: FONT, fontSize: 12, fontWeight: '400', color: Colors.textTertiary, textAlign: 'center' },
 
   scroll: { flex: 1 },
 
@@ -408,22 +308,17 @@ const styles = StyleSheet.create({
     marginHorizontal: Spacing.lg, marginBottom: Spacing.sm,
     backgroundColor: Colors.bgPrimary, borderRadius: BorderRadius.md, ...Shadows.small, overflow: 'hidden',
   },
-  sectionHeader: {
-    paddingHorizontal: Spacing.md, paddingVertical: 8,
-    backgroundColor: Colors.bgTertiary, borderBottomWidth: 1, borderBottomColor: Colors.borderLight,
-  },
-  sectionTitle: { fontFamily: FONT, fontSize: 14, fontWeight: '400', color: Colors.textPrimary, letterSpacing: 0.5 },
 
   // Row
   row: {
     flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: Spacing.md, paddingVertical: 8,
+    paddingHorizontal: Spacing.md, paddingVertical: 10,
     borderBottomWidth: 1, borderBottomColor: Colors.borderLight,
   },
   rowLast: { borderBottomWidth: 0 },
   rowLeft: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 },
   dot: { width: 8, height: 8, borderRadius: 4 },
-  labelText: { fontFamily: FONT, fontSize: 14, fontWeight: '400', color: Colors.textPrimary },
+  checkName: { fontFamily: FONT, fontSize: 14, fontWeight: '400', color: Colors.textPrimary },
   rowRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
 
   // Date box
@@ -432,31 +327,6 @@ const styles = StyleSheet.create({
 
   // Edit button
   editBtn: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center', borderRadius: 6 },
-
-  // ЛЛК/УМО special
-  llkUmoSectionHeader: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: Spacing.md, paddingVertical: 8,
-    backgroundColor: Colors.bgTertiary, borderBottomWidth: 1, borderBottomColor: Colors.borderLight,
-  },
-  llkUmoHeaderLabel: {
-    width: 100, fontFamily: FONT, fontSize: 14, fontWeight: '400',
-    color: Colors.textPrimary, textAlign: 'center', letterSpacing: 0.5,
-  },
-  llkUmoRow: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: Spacing.md, paddingVertical: 6,
-  },
-  llkUmoLabelGroup: { flexDirection: 'row', alignItems: 'center' },
-  llkUmoDateItem: { flexDirection: 'row', alignItems: 'center' },
-  llkUmoDates: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-
-  // Next due text
-  nextDueText: {
-    fontFamily: FONT, fontSize: 13, fontWeight: '400',
-    color: Colors.textSecondary, textAlign: 'center',
-    paddingVertical: 8, paddingHorizontal: Spacing.md,
-  },
 
   // Empty
   emptyRow: { paddingVertical: 12, alignItems: 'center' },
@@ -477,5 +347,4 @@ const styles = StyleSheet.create({
   pilotTextActive: { color: Colors.primary },
   modalClose: { marginTop: Spacing.md, paddingVertical: 11, borderRadius: BorderRadius.sm, backgroundColor: Colors.bgTertiary, alignItems: 'center' },
   modalCloseText: { fontFamily: FONT, fontSize: 15, fontWeight: '400', color: Colors.textPrimary },
-
 });

@@ -5,7 +5,11 @@
     "version": "1.2.0",
     "orientation": "portrait",
     "icon": "./assets/logo.png",
-    "platforms": ["ios", "android", "web"],
+    "platforms": [
+      "ios",
+      "android",
+      "web"
+    ],
     "splash": {
       "image": "./assets/logo.png",
       "resizeMode": "contain",
@@ -30,7 +34,8 @@
       }
     },
     "plugins": [
-      "expo-font"
+      "expo-font",
+      "expo-speech-recognition"
     ],
     "runtimeVersion": {
       "policy": "appVersion"

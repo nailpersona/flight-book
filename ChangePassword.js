@@ -2,7 +2,7 @@
 import {
   SafeAreaView, View, Text, TextInput, TouchableOpacity, Alert, StyleSheet, Platform
 } from 'react-native';
-import { AuthCtx } from './App';
+import { AuthCtx } from './contexts';
 import api from './api';
 
 const FONT = 'NewsCycle-Regular';

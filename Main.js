@@ -1,26 +1,19 @@
-﻿// Main.js
+// Main.js — сторінка записів
 import React, { useContext, useEffect, useMemo, useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, Alert, ScrollView,
   ActivityIndicator, StyleSheet, KeyboardAvoidingView, Platform, SafeAreaView,
   Modal, FlatList,
 } from 'react-native';
-import DateTimePicker from '@react-native-community/datetimepicker';
-import { AuthCtx } from './App';
-import api from './api';
+import { Ionicons } from '@expo/vector-icons';
+import CustomCalendar from './components/CustomCalendar';
+import { AuthCtx } from './contexts';
+import { supabase } from './supabase';
+import { Colors, Shadows, BorderRadius, Spacing, FONT } from './theme';
+import { TabNavigationContext } from './FixedTabNavigator';
 
-const FONT = 'NewsCycle-Regular';
-const DARK = '#333333';
-const DARK_TXT = '#ffffff';
-const SHADOW = {
-  shadowColor: '#000',
-  shadowOpacity: 0.18,
-  shadowRadius: 8,
-  shadowOffset: { width: 0, height: 4 },
-  elevation: 3,
-};
+// ─── Утиліти ───
 
-/** Службові */
 function ddmmyyyy(d) {
   const dd = String(d.getDate()).padStart(2, '0');
   const mm = String(d.getMonth() + 1).padStart(2, '0');
@@ -28,125 +21,93 @@ function ddmmyyyy(d) {
   return `${dd}.${mm}.${yyyy}`;
 }
 
-/** Витягти ТІЛЬКИ ЧАС із будь-якого значення, завжди HH:MM:SS */
-function onlyTimeHHMMSS(v) {
-  if (v == null) return '00:00:00';
-
-  const tryDate = (val) => {
-    const d = val instanceof Date ? val : new Date(val);
-    if (!isNaN(d.getTime())) {
-      const hh = String(d.getHours()).padStart(2, '0');
-      const mm = String(d.getMinutes()).padStart(2, '0');
-      const ss = String(d.getSeconds()).padStart(2, '0');
-      return `${hh}:${mm}:${ss}`;
-    }
-    return null;
-  };
-  const d1 = tryDate(v);
-  if (d1) return d1;
-
-  const s = String(v).trim();
-  const iso = s.match(/T(\d{2}):(\d{2}):(\d{2})/);
-  if (iso) return `${iso[1]}:${iso[2]}:${iso[3]}`;
-
-  const any = s.match(/\b(\d{1,2}):(\d{2})(?::(\d{2}))?\b/);
-  if (any) {
-    const hh = String(+any[1]).padStart(2, '0');
-    const mm = String(+any[2]).padStart(2, '0');
-    const ss = String(any[3] ? +any[3] : 0).padStart(2, '0');
-    return `${hh}:${mm}:${ss}`;
-  }
-
-  return s;
-}
-
-/** ПЕРЕТВОРЕННЯ ВВЕДЕННЯ «Наліт» → HH:MM:SS
- *  Правило: H.MM/ H,MM = години.хвилини (а не десяткова частка!)
- *  Приклади: 1.11 → 01:11:00, 1.5 → 01:05:00, 2 → 02:00:00.
- */
 function toHhMmSs(input) {
   if (input == null) return '00:00:00';
   const sRaw = String(input).trim();
   if (!sRaw) return '00:00:00';
-
-  // 1) Якщо це вже час "HH:MM" або "HH:MM:SS" — нормалізуємо і повертаємо
   const mClock = sRaw.match(/^(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?$/);
   if (mClock) {
     let hh = +mClock[1], mm = +mClock[2], ss = +(mClock[3] || 0);
-    // нормалізація переносу, якщо хтось ввів 01:75
     hh += Math.floor(mm / 60); mm = mm % 60;
-    hh += Math.floor(ss / 3600); ss = ss % 60;
     return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
   }
-
-  // 2) H.MM або H,MM — трактуємо як години.хвилини (мінутна частина, НЕ десяткова)
   const s = sRaw.replace(',', '.');
   const mHM = s.match(/^(\d+)\.(\d{1,2})$/);
   if (mHM) {
-    let hh = +mHM[1];
-    let mm = +mHM[2];               // 5 → 5 хв, 05 → 5 хв, 50 → 50 хв
-    hh += Math.floor(mm / 60);      // на всяк випадок якщо 75 → +1 год
-    mm = mm % 60;
+    let hh = +mHM[1], mm = +mHM[2];
+    hh += Math.floor(mm / 60); mm = mm % 60;
     return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:00`;
   }
-
-  // 3) Чисте ціле число — це години
-  if (/^\d+$/.test(s)) {
-    const hh = +s;
-    return `${String(hh).padStart(2, '0')}:00:00`;
-  }
-
-  // 4) Якщо прийшов ISO/дата-час — беремо лише час
-  return onlyTimeHHMMSS(sRaw);
+  if (/^\d+$/.test(s)) return `${String(+s).padStart(2, '0')}:00:00`;
+  return '00:00:00';
 }
 
-/** Кнопки */
-const DarkButton = ({ title, onPress, style }) => (
-  <TouchableOpacity onPress={onPress} activeOpacity={0.9} style={[styles.btn, styles.btnDark, style]}>
-    <Text style={styles.btnText}>{title}</Text>
-  </TouchableOpacity>
-);
-const GrayButton = ({ title, onPress, style }) => (
-  <TouchableOpacity onPress={onPress} activeOpacity={0.9} style={[styles.btn, styles.btnGray, style]}>
-    <Text style={styles.btnText}>{title}</Text>
+// ─── Базові компоненти ───
+
+const PrimaryButton = ({ title, onPress, style, loading }) => (
+  <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={[s.btn, s.btnPrimary, style]} disabled={loading}>
+    {loading ? (
+      <ActivityIndicator color={Colors.textInverse} size="small" />
+    ) : (
+      <Text style={s.btnText}>{title}</Text>
+    )}
   </TouchableOpacity>
 );
 
-/** Простий Combo без пошуку */
-function Combo({ label, value, onChange, options = [], placeholder = '— Оберіть —' }) {
+const SecondaryButton = ({ title, onPress, style }) => (
+  <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={[s.btn, s.btnSecondary, style]}>
+    <Text style={s.btnTextDark}>{title}</Text>
+  </TouchableOpacity>
+);
+
+const DarkButton = ({ title, onPress, style }) => (
+  <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={[s.btn, s.btnDark, style]}>
+    <Text style={s.btnText}>{title}</Text>
+  </TouchableOpacity>
+);
+
+// ─── Section card ───
+
+function Section({ icon, title, children }) {
+  return (
+    <View style={s.card}>
+      <View style={s.sectionHeader}>
+        <Ionicons name={icon} size={16} color={Colors.textSecondary} />
+        <Text style={s.sectionTitle}>{title}</Text>
+      </View>
+      {children}
+    </View>
+  );
+}
+
+// ─── Combo ───
+
+function Combo({ label, value, onChange, options = [], placeholder = '' }) {
   const [open, setOpen] = useState(false);
   return (
-    <View style={{ marginBottom: 12 }}>
-      {!!label && <Text style={styles.label}>{label}</Text>}
-
-      <TouchableOpacity style={[styles.input, styles.select]} activeOpacity={0.88} onPress={() => setOpen(true)}>
-        <Text style={[styles.inputText, { color: value ? '#111827' : '#9CA3AF' }]}>{value || placeholder}</Text>
-        <Text style={styles.selectCaret}>▾</Text>
+    <View style={{ marginBottom: Spacing.md }}>
+      {!!label && <Text style={s.label}>{label}</Text>}
+      <TouchableOpacity style={s.select} activeOpacity={0.85} onPress={() => setOpen(true)}>
+        <Text style={[s.selectText, !value && { color: Colors.textTertiary }]}>
+          {value || placeholder || label}
+        </Text>
+        <Ionicons name="chevron-down" size={16} color={Colors.textTertiary} />
       </TouchableOpacity>
-
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>{label}</Text>
-
+        <View style={s.modalBackdrop}>
+          <View style={s.modalCard}>
+            <Text style={s.modalTitle}>{label}</Text>
             <FlatList
               data={options}
               keyExtractor={(item, idx) => item + '_' + idx}
               style={{ maxHeight: 340 }}
               renderItem={({ item }) => (
-                <TouchableOpacity
-                  onPress={() => { onChange(item); setOpen(false); }}
-                  style={styles.optionRow}
-                >
-                  <Text style={styles.optionText}>{item}</Text>
+                <TouchableOpacity onPress={() => { onChange(item); setOpen(false); }} style={s.optionRow}>
+                  <Text style={s.optionText}>{item}</Text>
                 </TouchableOpacity>
               )}
             />
-
-            <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
-              <GrayButton title="Закрити" onPress={() => setOpen(false)} style={{ flex: 1 }} />
-              <DarkButton title="ОК" onPress={() => setOpen(false)} style={{ flex: 1 }} />
-            </View>
+            <SecondaryButton title="Закрити" onPress={() => setOpen(false)} style={{ marginTop: Spacing.sm }} />
           </View>
         </View>
       </Modal>
@@ -154,57 +115,164 @@ function Combo({ label, value, onChange, options = [], placeholder = '— Обе
   );
 }
 
-/** Мультивибір для Досягнень (через кому) */
-function Achievements({ value, onChange, options }) {
+// ─── Вибір вправ з автокомплітом ───
+
+function ExercisePicker({ exercises, selectedExercises, onAdd, onRemove }) {
   const [open, setOpen] = useState(false);
-  const addItem = (s) => {
-    const base = (value || '').trim();
-    const parts = base ? base.split(',').map(v => v.trim()).filter(Boolean) : [];
-    if (!parts.includes(s)) parts.push(s);
-    onChange(parts.join(', '));
+  const [search, setSearch] = useState('');
+
+  const getExerciseKey = (ex, flightNum = null) => {
+    return flightNum ? `${ex.id}_${flightNum}` : String(ex.id);
+  };
+
+  const exerciseVariants = useMemo(() => {
+    const variants = [];
+    exercises.forEach(ex => {
+      const flightCount = ex.flights_count && ex.flights_count !== 'РК' ? parseInt(ex.flights_count) : 0;
+      if (flightCount > 1) {
+        for (let i = 1; i <= flightCount; i++) {
+          variants.push({ ...ex, flight_number: i, displayNumber: `${ex.number}(${i})` });
+        }
+      } else {
+        variants.push({ ...ex, flight_number: null, displayNumber: ex.number });
+      }
+    });
+    return variants;
+  }, [exercises]);
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return exerciseVariants.slice(0, 30);
+    const q = search.toLowerCase();
+    return exerciseVariants.filter(e =>
+      e.number.toLowerCase().includes(q) || e.displayNumber.toLowerCase().includes(q) || e.name.toLowerCase().includes(q)
+    ).slice(0, 30);
+  }, [exerciseVariants, search]);
+
+  const selectedKeys = new Set(selectedExercises.map(ex => getExerciseKey(ex, ex.flight_number)));
+
+  return (
+    <View style={{ marginBottom: Spacing.md }}>
+      <Text style={s.label}>Вправа</Text>
+
+      {selectedExercises.length > 0 ? (
+        <TouchableOpacity activeOpacity={0.85} onPress={() => setOpen(true)} style={[s.select, { height: 'auto', minHeight: 44, paddingVertical: 6 }]}>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, flex: 1 }}>
+            {selectedExercises.map(ex => {
+              const key = getExerciseKey(ex, ex.flight_number);
+              const displayLabel = ex.flight_number ? `${ex.number}(${ex.flight_number})` : ex.number;
+              return (
+                <View key={key} style={s.chip}>
+                  <Text style={s.chipText}>{displayLabel}</Text>
+                  <TouchableOpacity onPress={() => onRemove(ex.id, ex.flight_number)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Text style={s.chipRemove}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+              );
+            })}
+          </View>
+          <Ionicons name="chevron-down" size={16} color={Colors.textTertiary} />
+        </TouchableOpacity>
+      ) : (
+        <TouchableOpacity style={s.select} activeOpacity={0.85} onPress={() => setOpen(true)}>
+          <Text style={[s.selectText, { color: Colors.textTertiary }]}> </Text>
+          <Ionicons name="chevron-down" size={16} color={Colors.textTertiary} />
+        </TouchableOpacity>
+      )}
+
+      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+        <View style={s.modalBackdrop}>
+          <View style={[s.modalCard, { maxHeight: '80%' }]}>
+            <Text style={s.modalTitle}>Вправа</Text>
+            <TextInput
+              style={[s.input, s.inputText, { marginBottom: Spacing.sm }]}
+              placeholder="Пошук: номер або назва..."
+              placeholderTextColor={Colors.textTertiary}
+              value={search}
+              onChangeText={setSearch}
+              autoFocus
+            />
+            <FlatList
+              data={filtered}
+              keyExtractor={(item) => getExerciseKey(item, item.flight_number)}
+              style={{ maxHeight: 340 }}
+              keyboardShouldPersistTaps="handled"
+              renderItem={({ item }) => {
+                const key = getExerciseKey(item, item.flight_number);
+                const isSelected = selectedKeys.has(key);
+                const displayLabel = item.flight_number ? `${item.number}(${item.flight_number}) ${item.name}` : `${item.number} ${item.name}`;
+                return (
+                  <TouchableOpacity
+                    onPress={() => { if (!isSelected) onAdd(item); }}
+                    style={[s.optionRow, isSelected && s.optionRowSelected]}
+                  >
+                    <Text style={[s.optionText, isSelected && s.optionTextSelected]}>
+                      {displayLabel}
+                    </Text>
+                    {isSelected && <Text style={s.selectedMark}>✓</Text>}
+                  </TouchableOpacity>
+                );
+              }}
+              ListEmptyComponent={
+                <Text style={s.emptyText}>Нічого не знайдено</Text>
+              }
+            />
+            <SecondaryButton title="Готово" onPress={() => { setOpen(false); setSearch(''); }} style={{ marginTop: Spacing.sm }} />
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
+// ─── Попап палива ───
+
+function FuelPopup({ fuel, onSave }) {
+  const [open, setOpen] = useState(false);
+  const [airfield, setAirfield] = useState(fuel?.airfield || '');
+  const [amount, setAmount] = useState(fuel?.amount || '');
+
+  const handleSave = () => {
+    onSave({ airfield: airfield.trim(), amount: amount.trim() });
+    setOpen(false);
   };
 
   return (
-    <View style={{ marginBottom: 12 }}>
-      <Text style={styles.label}>Досягнення</Text>
-
-      <TouchableOpacity style={[styles.input, styles.select]} activeOpacity={0.88} onPress={() => setOpen(true)}>
-        <Text style={[styles.inputText, { color: value ? '#111827' : '#9CA3AF' }]}>
-          {value || 'Чого досягнув'}
+    <View style={{ marginBottom: Spacing.md }}>
+      <Text style={s.label}>Паливо</Text>
+      <TouchableOpacity style={s.select} activeOpacity={0.85} onPress={() => setOpen(true)}>
+        <Text style={[s.selectText, { color: fuel?.airfield ? Colors.textPrimary : Colors.textTertiary }]}>
+          {fuel?.airfield ? `${fuel.airfield} — ${fuel.amount} кг` : 'кг'}
         </Text>
-        <Text style={styles.selectCaret}>▾</Text>
+        <Ionicons name="chevron-down" size={16} color={Colors.textTertiary} />
       </TouchableOpacity>
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Досягнення</Text>
+        <View style={s.modalBackdrop}>
+          <View style={s.modalCard}>
+            <Text style={s.modalTitle}>Паливо</Text>
 
-            <FlatList
-              data={options}
-              keyExtractor={(item, idx) => item + '_' + idx}
-              style={{ maxHeight: 340 }}
-              renderItem={({ item }) => (
-                <TouchableOpacity onPress={() => addItem(item)} style={styles.optionRow}>
-                  <Text style={styles.optionText}>{item}</Text>
-                </TouchableOpacity>
-              )}
+            <Text style={s.label}>Аеродром</Text>
+            <TextInput
+              style={[s.input, s.inputText, { marginBottom: Spacing.md }]}
+              placeholder="Назва аеродрому"
+              placeholderTextColor={Colors.textTertiary}
+              value={airfield}
+              onChangeText={setAirfield}
             />
 
-            <View style={{ gap: 6 }}>
-              <Text style={[styles.label, { marginTop: 6 }]}>Обране:</Text>
-              <TextInput
-                style={[styles.input, styles.inputText]}
-                placeholder="Чого досягнув"
-                value={value}
-                onChangeText={onChange}
-                multiline
-              />
-            </View>
+            <Text style={s.label}>Кількість (кг)</Text>
+            <TextInput
+              style={[s.input, s.inputText, { marginBottom: Spacing.md }]}
+              placeholder="0"
+              placeholderTextColor={Colors.textTertiary}
+              value={amount}
+              onChangeText={setAmount}
+              keyboardType="numeric"
+            />
 
-            <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
-              <GrayButton title="Закрити" onPress={() => setOpen(false)} style={{ flex: 1 }} />
-              <DarkButton title="ОК" onPress={() => setOpen(false)} style={{ flex: 1 }} />
+            <View style={{ flexDirection: 'row', gap: Spacing.sm }}>
+              <SecondaryButton title="Скасувати" onPress={() => setOpen(false)} style={{ flex: 1 }} />
+              <DarkButton title="Зберегти" onPress={handleSave} style={{ flex: 1 }} />
             </View>
           </View>
         </View>
@@ -213,132 +281,427 @@ function Achievements({ value, onChange, options }) {
   );
 }
 
+// ─── Модальне вікно зворотного зв'язку після польоту ───
+
+function FlightFeedbackModal({ visible, data, onClose }) {
+  const [correcting, setCorrecting] = useState(false);
+  const [checkedLp, setCheckedLp] = useState({});
+  const [saving, setSaving] = useState(false);
+
+  // All possible LP types for correction checklist
+  const [allLpTypes, setAllLpTypes] = useState([]);
+
+  useEffect(() => {
+    if (visible && data) {
+      // Initialize checked state from detected LP types
+      const init = {};
+      (data.detectedLp || []).forEach(lp => { init[lp] = true; });
+      setCheckedLp(init);
+      setCorrecting(false);
+
+      // Load available LP types
+      (async () => {
+        const { data: types } = await supabase
+          .from('break_periods_lp')
+          .select('lp_type')
+          .order('lp_type');
+        if (types) {
+          const unique = [...new Set(types.map(t => t.lp_type))];
+          setAllLpTypes(unique);
+        }
+      })();
+    }
+  }, [visible, data]);
+
+  const handleConfirm = async () => {
+    // Mark as confirmed
+    if (data?.logId) {
+      await supabase
+        .from('flight_updates_log')
+        .update({ confirmed: true })
+        .eq('id', data.logId);
+    }
+    onClose();
+  };
+
+  const handleCorrection = async () => {
+    if (!data) return;
+    setSaving(true);
+    try {
+      const correctedLp = Object.entries(checkedLp)
+        .filter(([, v]) => v)
+        .map(([k]) => k);
+
+      // Update log with correction
+      if (data.logId) {
+        await supabase
+          .from('flight_updates_log')
+          .update({
+            confirmed: false,
+            corrected_lp: correctedLp,
+          })
+          .eq('id', data.logId);
+      }
+
+      // Store as AI lesson
+      const detectedStr = (data.detectedLp || []).join(', ') || 'нічого';
+      const correctedStr = correctedLp.join(', ') || 'нічого';
+      const lessonText = `Автовизначення видів ЛП було: [${detectedStr}]. Льотчик виправив на: [${correctedStr}].`;
+
+      await supabase.from('ai_lessons').insert({
+        lesson_text: lessonText,
+        context: JSON.stringify({
+          flight_id: data.flightId,
+          detected_lp: data.detectedLp,
+          corrected_lp: correctedLp,
+          detected_mu: data.detectedMu,
+          exercise_ids: data.exerciseIds || [],
+        }),
+        source: 'pilot_feedback',
+        user_id: data.userId,
+      });
+
+      // Update lp_break_dates: remove unchecked, add newly checked
+      const removed = (data.detectedLp || []).filter(lp => !checkedLp[lp]);
+      const added = correctedLp.filter(lp => !(data.detectedLp || []).includes(lp));
+
+      // Note: we don't remove from lp_break_dates (might have older valid dates)
+      // Just add new ones the pilot indicated
+      for (const lp of added) {
+        const flightDate = new Date().toISOString().split('T')[0];
+        await supabase.from('lp_break_dates')
+          .upsert({ user_id: data.userId, lp_type: lp, last_date: flightDate },
+            { onConflict: 'user_id,lp_type' });
+      }
+
+      onClose();
+    } catch (err) {
+      Alert.alert('Помилка', String(err.message || err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!data) return null;
+
+  const muList = data.detectedMu || [];
+  const lpList = data.detectedLp || [];
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={s.modalBackdrop}>
+        <View style={[s.modalCard, { maxHeight: '80%' }]}>
+          {!correcting ? (
+            <>
+              <View style={{ alignItems: 'center', marginBottom: Spacing.md }}>
+                <Ionicons name="checkmark-circle-outline" size={40} color={Colors.primary} />
+                <Text style={[s.modalTitle, { marginTop: Spacing.sm }]}>Запис додано</Text>
+              </View>
+
+              <Text style={s.feedbackLabel}>Ви подовжили перерви:</Text>
+
+              {muList.length > 0 && (
+                <View style={s.feedbackSection}>
+                  <Text style={s.feedbackSectionTitle}>МУ:</Text>
+                  <Text style={s.feedbackItems}>{muList.join(', ')}</Text>
+                </View>
+              )}
+
+              {lpList.length > 0 && (
+                <View style={s.feedbackSection}>
+                  <Text style={s.feedbackSectionTitle}>Види ЛП:</Text>
+                  {lpList.map((lp, i) => (
+                    <Text key={i} style={s.feedbackItem}>  {lp}</Text>
+                  ))}
+                </View>
+              )}
+
+              {lpList.length === 0 && muList.length > 0 && (
+                <Text style={s.feedbackNote}>Види ЛП не визначено (немає вправ)</Text>
+              )}
+
+              <Text style={[s.feedbackLabel, { marginTop: Spacing.md }]}>Вірно?</Text>
+
+              <View style={{ flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.md }}>
+                <TouchableOpacity
+                  style={[s.btn, s.btnOutline, { flex: 1 }]}
+                  onPress={() => setCorrecting(true)}
+                >
+                  <Text style={[s.btnText, { color: Colors.textPrimary }]}>Ні</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[s.btn, s.btnPrimary, { flex: 1 }]}
+                  onPress={handleConfirm}
+                >
+                  <Text style={s.btnText}>Так</Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          ) : (
+            <>
+              <Text style={s.modalTitle}>Виправте види ЛП</Text>
+              <Text style={s.feedbackNote}>
+                Виправте, будь ласка, ці дані вручну. AI врахує під час наступного оновлення.
+              </Text>
+
+              <ScrollView style={{ maxHeight: 300, marginVertical: Spacing.md }}>
+                {allLpTypes.map((lp, i) => {
+                  const isChecked = !!checkedLp[lp];
+                  return (
+                    <TouchableOpacity
+                      key={i}
+                      style={s.checkRow}
+                      onPress={() => setCheckedLp(prev => ({ ...prev, [lp]: !prev[lp] }))}
+                    >
+                      <Ionicons
+                        name={isChecked ? 'checkbox' : 'square-outline'}
+                        size={20}
+                        color={isChecked ? Colors.primary : Colors.textTertiary}
+                      />
+                      <Text style={s.checkLabel}>{lp}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+
+              <View style={{ flexDirection: 'row', gap: Spacing.sm }}>
+                <TouchableOpacity
+                  style={[s.btn, s.btnOutline, { flex: 1 }]}
+                  onPress={() => setCorrecting(false)}
+                >
+                  <Text style={[s.btnText, { color: Colors.textPrimary }]}>Назад</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[s.btn, s.btnPrimary, { flex: 1 }]}
+                  onPress={handleCorrection}
+                  disabled={saving}
+                >
+                  {saving
+                    ? <ActivityIndicator size="small" color="#fff" />
+                    : <Text style={s.btnText}>Зберегти</Text>
+                  }
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+// ─── Головний екран ───
+
 export default function Main({ route, navigation }) {
   const { auth } = useContext(AuthCtx);
+  const { tabNavigate } = useContext(TabNavigationContext);
   const isAdmin = auth?.role === 'admin';
 
   const [submitting, setSubmitting] = useState(false);
-  const [loadingLists, setLoadingLists] = useState(true);
-  const [dynamicOptions, setDynamicOptions] = useState({});
+  const [allExercises, setAllExercises] = useState([]);
+  const [loading, setLoading] = useState(true);
 
+  // Налаштування записів з профілю
+  const [settingsAircraftTypes, setSettingsAircraftTypes] = useState([]);
+  const [settingsSources, setSettingsSources] = useState([]);
+
+  // Feedback modal after flight save
+  const [showFeedback, setShowFeedback] = useState(false);
+  const [feedbackData, setFeedbackData] = useState(null);
+
+  // Поля форми
   const [dateObj, setDateObj] = useState(new Date());
   const [date, setDate] = useState(ddmmyyyy(new Date()));
   const [showDatePicker, setShowDatePicker] = useState(false);
 
-  // Поля форми
   const [typePs, setTypePs] = useState('');
-  const [timeOfDay, setTimeOfDay] = useState('');
-  const [kindPol, setKindPol] = useState('');
-  const [flights, setFlights] = useState('');
+  const [timeDayMu, setTimeDayMu] = useState('');
+  const [flightType, setFlightType] = useState('');
+  const [testTopic, setTestTopic] = useState('');
+  const [docSource, setDocSource] = useState('');
+  const [selectedExercises, setSelectedExercises] = useState([]);
   const [nalit, setNalit] = useState('');
-  const [boi, setBoi] = useState('');
-  const [notes, setNotes] = useState('');
+  const [combatApps, setCombatApps] = useState('');
+  const [fuel, setFuel] = useState({ airfield: '', amount: '' });
+  const [flightPurpose, setFlightPurpose] = useState('');
 
-  // для редагування існуючого рядка
-  const [editRow, setEditRow] = useState(null);
-
-  // ВИПРАВЛЕНЕ завантаження динамічних списків
+  // Завантажити вправи та налаштування записів з Supabase
   useEffect(() => {
-    const loadDynamicLists = async () => {
+    const load = async () => {
       try {
-        setLoadingLists(true);
-        const result = await api.lists(); // Використовуємо api.lists() замість getDynamicLists()
-        console.log('Завантажені списки з API:', result);
-        
-        if (result?.ok && result.lists) {
-          console.log('Список "Вид пол.":', result.lists['Вид пол.']);
-          setDynamicOptions(result.lists);
-        } else {
-          throw new Error('Не вдалося завантажити списки з API');
+        const { data, error } = await supabase
+          .from('exercises')
+          .select('id, number, name, document, task, category, flights_count')
+          .order('id');
+        if (error) throw error;
+        setAllExercises(data || []);
+
+        // Завантажити налаштування записів пілота
+        if (auth?.email) {
+          const { data: pilot } = await supabase
+            .from('pilots')
+            .select('entry_settings')
+            .eq('email', auth.email)
+            .maybeSingle();
+          if (pilot?.entry_settings) {
+            const parsed = JSON.parse(pilot.entry_settings);
+            if (parsed.aircraft_types?.length) setSettingsAircraftTypes(parsed.aircraft_types);
+            if (parsed.sources?.length) setSettingsSources(parsed.sources);
+          }
         }
-      } catch (error) {
-        console.warn('Fallback до статичних списків:', error);
-        // ВИПРАВЛЕНИЙ Fallback до статичних списків з правильними ключами
-        setDynamicOptions({
-          'Тип ПС': ['Су-27', 'МіГ-29', 'Ми-8', 'Л-39', 'Су-24'],
-          'Час доби МУ': ['ДПМУ', 'ДСМУ', 'ДВМП', 'НПМУ', 'НСМУ', 'НВМП'],
-          'Вид пол.': ['Бойовий', 'Випробувальний', 'Учбово-тренув.', 'За методиками'], // ✅ Виправлено
-          'Примітки': [
-            'Вивід з-під удару', 'Складний пілотаж', 'Мала висота', 'Гр. мала висота (ОНБ)',
-            'Бойове застосування', 'Групова злітаність', 'На десантування',
-          ],
-        });
+      } catch (err) {
+        console.warn('Помилка завантаження вправ:', err);
       } finally {
-        setLoadingLists(false);
+        setLoading(false);
       }
     };
-
-    loadDynamicLists();
+    load();
   }, []);
 
-  // якщо прийшли з MyRecords для редагування
+  // Фільтр вправ по обраному документу
+  const filteredExercises = useMemo(() => {
+    if (!docSource) return allExercises;
+    return allExercises.filter(e => e.document === docSource);
+  }, [allExercises, docSource]);
+
+  // Скидання вправ при зміні документу
   useEffect(() => {
-    const edit = route.params?.edit;
-    if (edit && edit.data) {
-      const d = edit.data;
-      setEditRow(edit.row || d._row || null);
+    setSelectedExercises([]);
+  }, [docSource]);
 
-      const parsed = new Date(d['Дата']);
-      const dObj = isNaN(parsed.getTime()) ? new Date() : parsed;
-      setDateObj(dObj);
-      setDate(ddmmyyyy(dObj));
+  // Автозаповнення мети польоту з обраних вправ
+  const exercisesText = useMemo(() => {
+    return selectedExercises.map(e => {
+      const label = e.flight_number ? `${e.number}(${e.flight_number})` : e.number;
+      return `Впр. ${label} ${e.name}`;
+    }).join(', ');
+  }, [selectedExercises]);
 
-      setTypePs(String(d['Тип ПС'] || ''));
-      setTimeOfDay(String(d['Час доби МУ'] || ''));
-      const vid = String(d['Вид пол.'] || d['Вид польоту'] || '');
-      setKindPol(vid);
-      setFlights(String(d['Польотів'] || ''));
-
-      // беремо лише час (навіть якщо в таблиці це дата-час)
-      setNalit(onlyTimeHHMMSS(d['Наліт']));
-
-      setBoi(String(d['Бойових заст.'] || ''));
-      setNotes(String(d['Примітки'] || ''));
+  // Синхронізація мети польоту з обраними вправами
+  useEffect(() => {
+    if (exercisesText) {
+      setFlightPurpose(exercisesText);
     }
-  }, [route.params?.edit]);
+  }, [exercisesText]);
 
-  const resetForm = () => {
-    const now = new Date();
-    setDateObj(now); setDate(ddmmyyyy(now));
-    setTypePs(''); setTimeOfDay(''); setKindPol('');
-    setFlights(''); setNalit(''); setBoi(''); setNotes('');
-    setEditRow(null);
-  };
-
-  const onChangeDate = (event, selectedDate) => {
-    if (Platform.OS === 'android') setShowDatePicker(false);
+  const onSelectDate = (selectedDate) => {
+    setShowDatePicker(false);
     if (selectedDate) {
       setDateObj(selectedDate);
       setDate(ddmmyyyy(selectedDate));
     }
   };
 
+  const resetForm = () => {
+    const now = new Date();
+    setDateObj(now);
+    setDate(ddmmyyyy(now));
+    setTypePs('');
+    setTimeDayMu('');
+    setFlightType('');
+    setTestTopic('');
+    setDocSource('');
+    setSelectedExercises([]);
+    setNalit('');
+    setCombatApps('');
+    setFuel({ airfield: '', amount: '' });
+    setFlightPurpose('');
+  };
+
   const submit = async () => {
-    if (!auth?.token) return Alert.alert('Помилка', 'Немає токена сесії');
     if (!date) return Alert.alert('Увага', 'Вкажи дату');
-    if (!typePs) return Alert.alert('Увага', 'Вкажи Тип ПС');
-    if (!timeOfDay) return Alert.alert('Увага', 'Вкажи Час доби МУ');
-    if (!kindPol) return Alert.alert('Увага', 'Вкажи Вид польоту');
+    if (!typePs) return Alert.alert('Увага', 'Вкажи тип ПС');
+    if (!timeDayMu) return Alert.alert('Увага', 'Вкажи час доби та МУ');
+    if (!flightType) return Alert.alert('Увага', 'Вкажи вид польоту');
 
     try {
       setSubmitting(true);
-      const payload = {
-        'Дата': date,
-        'Тип ПС': typePs,
-        'Час доби МУ': timeOfDay,
-        'Вид пол.': kindPol,
-        'Польотів': (flights || '').toString().trim(),
-        'Наліт': toHhMmSs(nalit || ''),         // ТУТ новий конвертер
-        'Бойових заст.': (boi || '').toString().trim(),
-        'Примітки': (notes || '').toString().trim(),
-      };
 
-      let j;
-      if (editRow) j = await api.updateRow(auth.token, editRow, payload);
-      else j = await api.add(auth.token, payload);
+      // Parse timeDayMu: "ДСМУ" → time_of_day="Д", weather="СМУ"
+      const time_of_day = timeDayMu[0];
+      const weather_conditions = timeDayMu.substring(1);
 
-      if (!j?.ok) throw new Error(j?.error || 'Помилка збереження');
-      Alert.alert('Готово', editRow ? 'Запис оновлено' : 'Запис додано');
+      // Find user
+      const { data: userData, error: userErr } = await supabase
+        .from('users').select('id').eq('name', auth.pib).single();
+      if (userErr || !userData) throw new Error('Користувача не знайдено');
+
+      // Find aircraft_type_id
+      const { data: atData, error: atErr } = await supabase
+        .from('aircraft_types').select('id').eq('name', typePs).single();
+      if (atErr || !atData) throw new Error('Тип ПС не знайдено');
+
+      // Map flight type
+      let dbFlightType = flightType;
+      if (flightType === 'УТП') dbFlightType = 'Учбово-тренув.';
+
+      // Insert flight
+      const { data: flight, error: flightErr } = await supabase
+        .from('flights')
+        .insert({
+          user_id: userData.id,
+          date: dateObj.toISOString().split('T')[0],
+          aircraft_type_id: atData.id,
+          time_of_day,
+          weather_conditions,
+          flight_type: dbFlightType,
+          test_flight_topic: flightType === 'На випробування' ? testTopic : null,
+          document_source: docSource || null,
+          flight_time: toHhMmSs(nalit),
+          combat_applications: parseInt(combatApps) || 0,
+          flight_purpose: flightPurpose || null,
+          flights_count: 1,
+        })
+        .select()
+        .single();
+
+      if (flightErr) throw flightErr;
+
+      // Insert exercises
+      if (selectedExercises.length > 0) {
+        const { error: exErr } = await supabase
+          .from('flight_exercises')
+          .insert(selectedExercises.map(ex => ({
+            flight_id: flight.id,
+            exercise_id: ex.id,
+          })));
+        if (exErr) console.warn('Помилка вправ:', exErr);
+      }
+
+      // Insert fuel
+      if (fuel.airfield && fuel.amount) {
+        await supabase.from('fuel_records').insert({
+          flight_id: flight.id,
+          airfield: fuel.airfield,
+          fuel_amount: parseFloat(fuel.amount) || 0,
+        });
+      }
+
+      // Small delay for triggers to complete, then get detection log
+      await new Promise(r => setTimeout(r, 300));
+      const { data: log } = await supabase
+        .from('flight_updates_log')
+        .select('*')
+        .eq('flight_id', flight.id)
+        .maybeSingle();
+
+      const detectedMu = log?.detected_mu || [];
+      const detectedLp = log?.detected_lp || [];
+
+      if (detectedMu.length > 0 || detectedLp.length > 0) {
+        setFeedbackData({
+          flightId: flight.id,
+          userId: userData.id,
+          detectedMu,
+          detectedLp,
+          logId: log?.id,
+          exerciseIds: selectedExercises.map(e => e.id),
+        });
+        setShowFeedback(true);
+      } else {
+        Alert.alert('Готово', 'Запис додано');
+      }
+
       resetForm();
     } catch (err) {
       Alert.alert('Помилка', String(err.message || err));
@@ -347,162 +710,466 @@ export default function Main({ route, navigation }) {
     }
   };
 
-  // Показуємо індикатор завантаження списків
-  if (loadingLists) {
+  if (loading) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#F3F5F9' }}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bgTertiary }}>
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-          <ActivityIndicator size="large" color={DARK} />
-          <Text style={{ marginTop: 10, fontFamily: FONT, fontSize: 16, color: '#111827' }}>
-            Завантаження довідників...
-          </Text>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={s.loadingText}>Завантаження...</Text>
         </View>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#F3F5F9' }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bgTertiary }}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        {/* Топбар */}
-        <View style={[styles.topBar, { paddingTop: 14, marginTop: 16 }]}>
-          <View>
-            <Text style={styles.roleName}>{auth?.pib || ''}</Text>
-            <Text style={styles.roleText}>Роль: {isAdmin ? 'admin' : 'user'}</Text>
-          </View>
-          <DarkButton title="ПРОФІЛЬ" onPress={() => navigation.navigate('Profile')} />
-        </View>
+        <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
 
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          {/* Ряд 1 */}
-          <View style={styles.row}>
-            <View style={styles.col}>
-              <Text style={styles.label}>Дата</Text>
-              <TouchableOpacity style={[styles.input, styles.dateBtn]} onPress={() => setShowDatePicker(true)}>
-                <Text style={styles.dateText}>{date || 'Оберіть дату'}</Text>
-              </TouchableOpacity>
-              {showDatePicker && (
-                <DateTimePicker value={dateObj} mode="date" display={Platform.OS === 'ios' ? 'inline' : 'default'} onChange={onChangeDate}/>
-              )}
+          {/* ── Секція 1: Основне ── */}
+          <Section icon="airplane-outline" title="Основне">
+            <View style={s.row}>
+              <View style={s.col}>
+                <Text style={s.label}>Дата</Text>
+                <TouchableOpacity style={s.dateBtn} onPress={() => setShowDatePicker(true)}>
+                  <Ionicons name="calendar-outline" size={16} color={Colors.textSecondary} />
+                  <Text style={s.dateText}>{date || 'Оберіть дату'}</Text>
+                </TouchableOpacity>
+                <CustomCalendar
+                  visible={showDatePicker}
+                  value={dateObj}
+                  onSelect={onSelectDate}
+                  onClose={() => setShowDatePicker(false)}
+                />
+              </View>
+              <View style={s.col}>
+                <Combo label="Тип ПС" value={typePs} onChange={setTypePs} placeholder=" " options={settingsAircraftTypes.length > 0 ? settingsAircraftTypes : ['МіГ-29', 'Су-27', 'Л-39']} />
+              </View>
             </View>
 
-            <View style={styles.col}>
-              <Combo 
-                label="Тип ПС" 
-                value={typePs} 
-                onChange={setTypePs} 
-                options={dynamicOptions['Тип ПС'] || []} 
-              />
+            <View style={s.row}>
+              <View style={s.col}>
+                <Combo label="Час доби та МУ" value={timeDayMu} onChange={setTimeDayMu} placeholder=" " options={['ДПМУ', 'ДСМУ', 'ДВМП', 'НПМУ', 'НСМУ', 'НВМП']} />
+              </View>
+              <View style={s.col}>
+                <Combo
+                  label="Вид польоту"
+                  value={flightType}
+                  onChange={setFlightType}
+                  placeholder=" "
+                  options={['УТП', 'На випробування', 'У складі екіпажу']}
+                />
+              </View>
             </View>
-          </View>
 
-          {/* Ряд 2 */}
-          <View style={styles.row}>
-            <View style={styles.col}>
-              <Combo 
-                label="Час доби МУ" 
-                value={timeOfDay} 
-                onChange={setTimeOfDay} 
-                options={dynamicOptions['Час доби МУ'] || []} 
-              />
-            </View>
-            <View style={styles.col}>
-              <Combo 
-                label="Вид польоту" 
-                value={kindPol} 
-                onChange={setKindPol} 
-                options={dynamicOptions['Вид пол.'] || []} // ✅ ВИПРАВЛЕНО: використовуємо правильний ключ
-              />
-            </View>
-          </View>
+            {flightType === 'На випробування' && (
+              <View style={{ marginBottom: Spacing.md }}>
+                <Text style={s.label}>Тема випробувального польоту</Text>
+                <TextInput
+                  style={[s.input, s.inputText]}
+                  value={testTopic}
+                  onChangeText={setTestTopic}
+                />
+              </View>
+            )}
+          </Section>
 
-          {/* Ряд 3 */}
-          <View style={styles.row3}>
-            <View style={styles.col3}>
-              <Text style={styles.label}>Польотів</Text>
-              <TextInput style={[styles.input, styles.inputText]} placeholder="К-сть пол." value={flights} onChangeText={setFlights} keyboardType="numeric"/>
+          {/* ── Секція 2: Вправа ── */}
+          {flightType !== 'У складі екіпажу' && (
+          <Section icon="book-outline" title="Завдання">
+            <View style={s.row}>
+              <View style={s.col}>
+                <Combo
+                  label="Згідно чого"
+                  value={docSource}
+                  onChange={setDocSource}
+                  placeholder=" "
+                  options={settingsSources.length > 0 ? settingsSources : ['КБП ВА', 'КЛПВ']}
+                />
+              </View>
+              <View style={s.col}>
+                <ExercisePicker
+                  exercises={filteredExercises}
+                  selectedExercises={selectedExercises}
+                  onAdd={(ex) => setSelectedExercises(prev => [...prev, ex])}
+                  onRemove={(id, flightNumber) => setSelectedExercises(prev => prev.filter(e =>
+                    !(e.id === id && e.flight_number === flightNumber)
+                  ))}
+                />
+              </View>
             </View>
-            <View style={styles.col3}>
-              <Text style={styles.label}>Наліт</Text>
+
+            <View style={{ marginBottom: Spacing.md }}>
+              <Text style={s.label}>Мета польоту</Text>
               <TextInput
-                style={[styles.input, styles.inputText]}
-                placeholder="Год.Хв"
-                value={nalit}
-                onChangeText={setNalit}
-                keyboardType="numeric"
+                style={[s.input, s.inputText, { minHeight: 56, textAlignVertical: 'top' }]}
+                value={flightPurpose}
+                onChangeText={setFlightPurpose}
+                multiline
               />
             </View>
-            <View style={styles.col3}>
-              <Text style={styles.label}>Бойових заст.</Text>
-              <TextInput style={[styles.input, styles.inputText]} placeholder="К-сть БЗ" value={boi} onChangeText={setBoi} keyboardType="numeric"/>
-            </View>
+          </Section>
+          )}
+
+          {/* ── Секція 3: Результати ── */}
+          <Section icon="stats-chart-outline" title="Результати">
+            {flightType === 'У складі екіпажу' ? (
+              <View style={{ alignItems: 'center' }}>
+                <View style={{ width: '50%' }}>
+                  <Text style={[s.label, { textAlign: 'center' }]}>Наліт</Text>
+                  <TextInput
+                    style={[s.input, s.inputText, { textAlign: 'center' }]}
+                    placeholder="1.30"
+                    placeholderTextColor={Colors.textTertiary}
+                    value={nalit}
+                    onChangeText={setNalit}
+                    keyboardType="numeric"
+                  />
+                </View>
+              </View>
+            ) : (
+              <View style={s.row}>
+                <View style={s.col}>
+                  <Text style={s.label}>Наліт</Text>
+                  <TextInput
+                    style={[s.input, s.inputText]}
+                    placeholder="1.30"
+                    placeholderTextColor={Colors.textTertiary}
+                    value={nalit}
+                    onChangeText={setNalit}
+                    keyboardType="numeric"
+                  />
+                </View>
+                <View style={s.col}>
+                  <Text style={s.label}>Бой. заст.</Text>
+                  <TextInput
+                    style={[s.input, s.inputText]}
+                    placeholder="0"
+                    placeholderTextColor={Colors.textTertiary}
+                    value={combatApps}
+                    onChangeText={setCombatApps}
+                    keyboardType="numeric"
+                  />
+                </View>
+                <View style={s.col}>
+                  <FuelPopup fuel={fuel} onSave={setFuel} />
+                </View>
+              </View>
+            )}
+          </Section>
+
+          {/* ── Кнопки ── */}
+          <View style={{ alignItems: 'center' }}>
+            <PrimaryButton title="Додати запис" onPress={submit} loading={submitting} style={{ width: '60%' }} />
           </View>
 
-          {/* Досягнення */}
-          <Achievements 
-            value={notes} 
-            onChange={setNotes} 
-            options={dynamicOptions['Примітки'] || []} 
-          />
-
-          {/* Зберегти */}
-          <DarkButton
-            title={editRow ? 'ОНОВИТИ' : 'ДОДАТИ'}
-            onPress={submit}
-            style={{ marginTop: 10 }}
-          />
-          {submitting ? <ActivityIndicator color={DARK} style={{ marginTop: 8 }} /> : null}
-
-          <GrayButton title="МОЇ ЗАПИСИ" onPress={() => navigation.navigate('MyRecords')} style={{ marginTop: 12 }} />
-
-          <View style={{ height: 28 }} />
+          <View style={{ height: Spacing.xl }} />
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <FlightFeedbackModal
+        visible={showFeedback}
+        data={feedbackData}
+        onClose={() => { setShowFeedback(false); setFeedbackData(null); }}
+      />
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  topBar: {
-    paddingHorizontal: 16, paddingBottom: 6, backgroundColor: '#F3F5F9',
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+// ─── Стилі ───
+
+const s = StyleSheet.create({
+  content: {
+    padding: Spacing.lg,
+    gap: Spacing.md,
   },
-  roleName: { fontFamily: FONT, fontSize: 22, fontWeight: '800', color: '#111827' },
-  roleText: { fontFamily: FONT, fontSize: 14, fontWeight: '600', color: '#1F2937' },
 
-  btn: {
-    height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center',
-    ...SHADOW, paddingHorizontal: 18,
+  // Card sections
+  card: {
+    backgroundColor: Colors.bgPrimary,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.lg,
+    ...Shadows.small,
   },
-  btnDark: { backgroundColor: DARK },
-  btnGray: { backgroundColor: '#7B7B7B' },
-  btnText: { color: DARK_TXT, fontFamily: FONT, fontSize: 18, fontWeight: '800' },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 14,
+    paddingBottom: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Colors.borderLight,
+  },
+  sectionTitle: {
+    fontFamily: FONT,
+    fontSize: 14,
+    fontWeight: '400',
+    color: Colors.textSecondary,
+    letterSpacing: 0.3,
+  },
 
-  content: { padding: 16, gap: 10 },
-
-  row: { flexDirection: 'row', gap: 12 },
+  row: { flexDirection: 'row', gap: Spacing.md },
   col: { flex: 1 },
 
-  row3: { flexDirection: 'row', gap: 10, marginTop: 4 },
-  col3: { flex: 1 },
-
-  label: { fontFamily: FONT, fontSize: 14, color: '#111827', marginBottom: 6, fontWeight: '600' },
-
-  input: {
-    minHeight: 44, borderRadius: 12, paddingHorizontal: 12, backgroundColor: '#fff',
-    borderWidth: 1, borderColor: '#E5E7EB',
+  // Buttons
+  btn: {
+    height: 48,
+    borderRadius: BorderRadius.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.lg,
+    ...Shadows.medium,
   },
-  inputText: { fontFamily: FONT, fontSize: 16, color: '#111827' },
+  btnPrimary: {
+    backgroundColor: Colors.primary,
+  },
+  btnSecondary: {
+    backgroundColor: Colors.bgPrimary,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    ...Shadows.small,
+  },
+  btnDark: {
+    backgroundColor: Colors.btnDark,
+  },
+  btnText: {
+    color: Colors.textInverse,
+    fontFamily: FONT,
+    fontSize: 16,
+    fontWeight: '400',
+  },
+  btnTextDark: {
+    color: Colors.textPrimary,
+    fontFamily: FONT,
+    fontSize: 16,
+    fontWeight: '400',
+  },
 
-  select: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  selectCaret: { fontSize: 16, color: '#6B7280' },
+  // Link-style button
+  linkBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 14,
+  },
+  linkText: {
+    fontFamily: FONT,
+    fontSize: 15,
+    fontWeight: '400',
+    color: Colors.textSecondary,
+  },
 
-  dateBtn: { justifyContent: 'center' },
-  dateText: { color: '#111827', fontFamily: FONT, fontSize: 16 },
+  // Inputs
+  label: {
+    fontFamily: FONT,
+    fontSize: 13,
+    color: Colors.textSecondary,
+    marginBottom: 5,
+    fontWeight: '400',
+  },
+  input: {
+    minHeight: 44,
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.md,
+    backgroundColor: Colors.bgSecondary,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  inputText: {
+    fontFamily: FONT,
+    fontSize: 15,
+    fontWeight: '400',
+    color: Colors.textPrimary,
+  },
 
-  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', padding: 20 },
-  modalCard: { backgroundColor: '#fff', borderRadius: 16, padding: 14 },
-  modalTitle: { fontFamily: FONT, fontSize: 16, fontWeight: '700', marginBottom: 10, color: '#111827' },
-  optionRow: { paddingVertical: 10, paddingHorizontal: 8, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
-  optionText: { fontFamily: FONT, fontSize: 16, color: '#111827' },
+  // Select / combo
+  select: {
+    minHeight: 44,
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.md,
+    backgroundColor: Colors.bgSecondary,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  selectText: {
+    fontFamily: FONT,
+    fontSize: 15,
+    fontWeight: '400',
+    color: Colors.textPrimary,
+    flex: 1,
+  },
+
+  // Date
+  dateBtn: {
+    minHeight: 44,
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.md,
+    backgroundColor: Colors.bgSecondary,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  dateText: {
+    color: Colors.textPrimary,
+    fontFamily: FONT,
+    fontSize: 15,
+    fontWeight: '400',
+  },
+
+  // Modal
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    padding: Spacing.lg,
+  },
+  modalCard: {
+    backgroundColor: Colors.bgPrimary,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.lg,
+    ...Shadows.large,
+  },
+  modalTitle: {
+    fontFamily: FONT,
+    fontSize: 16,
+    fontWeight: '400',
+    marginBottom: 12,
+    color: Colors.textPrimary,
+  },
+  optionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: Spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Colors.borderLight,
+  },
+  optionRowSelected: {
+    backgroundColor: Colors.bgSecondary,
+  },
+  optionText: {
+    fontFamily: FONT,
+    fontSize: 15,
+    fontWeight: '400',
+    color: Colors.textPrimary,
+    flex: 1,
+  },
+  optionTextSelected: {
+    color: Colors.primary,
+  },
+  selectedMark: {
+    fontFamily: FONT,
+    color: Colors.success,
+    fontSize: 14,
+    fontWeight: '400',
+    marginLeft: 8,
+  },
+  emptyText: {
+    padding: 12,
+    color: Colors.textTertiary,
+    fontFamily: FONT,
+    fontSize: 14,
+    fontWeight: '400',
+  },
+
+  // Chips
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.bgTertiary,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    gap: 5,
+  },
+  chipText: {
+    fontFamily: FONT,
+    fontSize: 13,
+    fontWeight: '400',
+    color: Colors.textPrimary,
+    flexShrink: 1,
+  },
+  chipRemove: {
+    fontFamily: FONT,
+    fontSize: 12,
+    color: Colors.textTertiary,
+  },
+
+  // Loading
+  loadingText: {
+    marginTop: 10,
+    fontFamily: FONT,
+    fontSize: 15,
+    fontWeight: '400',
+    color: Colors.textSecondary,
+  },
+
+  // Feedback modal
+  feedbackLabel: {
+    fontFamily: FONT,
+    fontSize: 15,
+    fontWeight: '400',
+    color: Colors.textPrimary,
+    marginBottom: Spacing.sm,
+  },
+  feedbackSection: {
+    marginBottom: Spacing.sm,
+    paddingLeft: Spacing.sm,
+  },
+  feedbackSectionTitle: {
+    fontFamily: FONT,
+    fontSize: 14,
+    fontWeight: '400',
+    color: Colors.textSecondary,
+    marginBottom: 4,
+  },
+  feedbackItems: {
+    fontFamily: FONT,
+    fontSize: 14,
+    fontWeight: '400',
+    color: Colors.textPrimary,
+    lineHeight: 20,
+  },
+  feedbackItem: {
+    fontFamily: FONT,
+    fontSize: 14,
+    fontWeight: '400',
+    color: Colors.textPrimary,
+    lineHeight: 22,
+  },
+  feedbackNote: {
+    fontFamily: FONT,
+    fontSize: 13,
+    fontWeight: '400',
+    color: Colors.textTertiary,
+    fontStyle: 'italic',
+    marginBottom: Spacing.sm,
+  },
+  checkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Colors.borderLight,
+  },
+  checkLabel: {
+    fontFamily: FONT,
+    fontSize: 14,
+    fontWeight: '400',
+    color: Colors.textPrimary,
+    flex: 1,
+  },
+  btnOutline: {
+    backgroundColor: Colors.bgPrimary,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
 });

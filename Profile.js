@@ -1,108 +1,30 @@
-import React, { useContext, useState } from 'react';
+// Profile.js — сучасний дизайн у чоловічих сіро-чорних тонах
+import React, { useContext } from 'react';
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   Alert,
   StyleSheet,
   SafeAreaView,
   ScrollView,
-  ActivityIndicator,
 } from 'react-native';
-import { AuthCtx } from './App';
-import api from './api';
+import { Ionicons } from '@expo/vector-icons';
+import { AuthCtx } from './contexts';
+import { Colors, Shadows, BorderRadius, Spacing, FONT } from './theme';
+import { TabNavigationContext } from './FixedTabNavigator';
 
-const FONT = 'NewsCycle-Regular';
-const DARK = '#333333';
-const LIGHT = '#ffffff';
-const SHADOW = {
-  shadowColor: '#000',
-  shadowOpacity: 0.18,
-  shadowRadius: 8,
-  shadowOffset: { width: 0, height: 4 },
-  elevation: 3,
-};
-
-const DarkButton = ({ title, onPress, style }) => (
-  <TouchableOpacity 
-    onPress={onPress} 
-    activeOpacity={0.9} 
-    style={[styles.btn, styles.btnDark, style]}
-  >
+// Кнопка профілю — єдиний стиль для всіх
+const ProfileButton = ({ title, icon, onPress, style }) => (
+  <TouchableOpacity onPress={onPress} activeOpacity={0.7} style={[styles.btn, style]}>
+    <Ionicons name={icon} size={18} color="#555860" style={styles.btnIcon} />
     <Text style={styles.btnText}>{title}</Text>
-  </TouchableOpacity>
-);
-
-const LightButton = ({ title, onPress, style }) => (
-  <TouchableOpacity 
-    onPress={onPress} 
-    activeOpacity={0.9} 
-    style={[styles.btn, styles.btnLight, style]}
-  >
-    <Text style={styles.btnTextDark}>{title}</Text>
-  </TouchableOpacity>
-);
-
-const ProfileButton = ({ title, onPress, style }) => (
-  <TouchableOpacity 
-    onPress={onPress} 
-    activeOpacity={0.9} 
-    style={[styles.profileBtn, style]}
-  >
-    <Text style={styles.profileBtnText}>{title}</Text>
   </TouchableOpacity>
 );
 
 export default function Profile({ navigation }) {
   const { auth, logout } = useContext(AuthCtx);
-  const [showPasswordChange, setShowPasswordChange] = useState(false);
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [updating, setUpdating] = useState(false);
-
-  const handlePasswordChange = async () => {
-    if (!newPassword.trim()) {
-      Alert.alert('Помилка', 'Введіть новий пароль');
-      return;
-    }
-
-    if (newPassword.length < 6) {
-      Alert.alert('Помилка', 'Пароль має містити мінімум 6 символів');
-      return;
-    }
-
-    if (newPassword !== confirmPassword) {
-      Alert.alert('Помилка', 'Паролі не співпадають');
-      return;
-    }
-
-    try {
-      setUpdating(true);
-      const result = await api.updateProfile(auth.token, {
-        newPassword: newPassword,
-      });
-
-      if (result?.ok) {
-        Alert.alert('Успіх', 'Пароль змінено успішно', [
-          {
-            text: 'OK',
-            onPress: () => {
-              setNewPassword('');
-              setConfirmPassword('');
-              setShowPasswordChange(false);
-            },
-          },
-        ]);
-      } else {
-        Alert.alert('Помилка', result?.error || 'Не вдалося змінити пароль');
-      }
-    } catch (error) {
-      Alert.alert('Помилка', 'Не вдалося змінити пароль');
-    } finally {
-      setUpdating(false);
-    }
-  };
+  const { tabNavigate } = useContext(TabNavigationContext);
 
   const handleLogout = () => {
     Alert.alert('Вихід', 'Ви впевнені що хочете вийти?', [
@@ -117,144 +39,74 @@ export default function Profile({ navigation }) {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.title}>Профіль</Text>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Text style={styles.backButtonText}>Назад</Text>
-        </TouchableOpacity>
-      </View>
-
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Навігаційні кнопки */}
-        <View style={styles.navigationSection}>
-          <DarkButton
+        {/* Кнопки */}
+        <View style={styles.buttonList}>
+          <ProfileButton
+            icon="list-outline"
+            title="Мої записи"
+            onPress={() => tabNavigate('MyRecords')}
+          />
+
+          <ProfileButton
+            icon="timer-outline"
             title="Перерви за МУ"
             onPress={() =>
-              navigation.navigate('BreaksMU', {
+              tabNavigate('BreaksMU', undefined, {
                 pib: auth?.pib,
                 isAdmin: auth?.role === 'admin',
               })
             }
-            style={styles.navButton}
           />
 
-          <LightButton
+          <ProfileButton
+            icon="airplane-outline"
             title="Перерви за видами ЛП"
             onPress={() =>
-              navigation.navigate('BreaksLP', {
+              tabNavigate('BreaksLP', undefined, {
                 pib: auth?.pib,
                 isAdmin: auth?.role === 'admin',
               })
             }
-            style={styles.navButton}
           />
 
-          <DarkButton
+          <ProfileButton
+            icon="document-text-outline"
             title="Таблиця комісування"
             onPress={() =>
-              navigation.navigate('CommissionTable', {
+              tabNavigate('CommissionTable', undefined, {
                 pib: auth?.pib,
                 isAdmin: auth?.role === 'admin',
               })
             }
-            style={styles.navButton}
           />
-        </View>
 
-        {/* Зміна пароля */}
-        <View style={styles.passwordSection}>
-          {!showPasswordChange ? (
-            <LightButton
-              title="Змінити пароль"
-              onPress={() => setShowPasswordChange(true)}
-              style={styles.navButton}
-            />
-          ) : (
-            <View style={styles.passwordForm}>
-              <Text style={styles.formTitle}>Зміна пароля</Text>
-
-              {/* Email (тільки для читання) */}
-              <View style={styles.fieldContainer}>
-                <Text style={styles.fieldLabel}>Email:</Text>
-                <View style={styles.disabledInput}>
-                  <Text style={styles.disabledInputText}>
-                    {auth?.email || 'Не вказано'}
-                  </Text>
-                </View>
-              </View>
-
-              {/* Новий пароль */}
-              <View style={styles.fieldContainer}>
-                <Text style={styles.fieldLabel}>Введіть новий пароль:</Text>
-                <TextInput
-                  style={styles.input}
-                  value={newPassword}
-                  onChangeText={setNewPassword}
-                  placeholder="Мінімум 6 символів"
-                  secureTextEntry
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-              </View>
-
-              {/* Підтвердження пароля */}
-              <View style={styles.fieldContainer}>
-                <Text style={styles.fieldLabel}>Повторіть новий пароль:</Text>
-                <TextInput
-                  style={styles.input}
-                  value={confirmPassword}
-                  onChangeText={setConfirmPassword}
-                  placeholder="Повторіть пароль"
-                  secureTextEntry
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-              </View>
-
-              {/* Кнопки */}
-              <View style={styles.formButtons}>
-                <TouchableOpacity
-                  style={[styles.formBtn, styles.cancelBtn]}
-                  onPress={() => {
-                    setShowPasswordChange(false);
-                    setNewPassword('');
-                    setConfirmPassword('');
-                  }}
-                  disabled={updating}
-                >
-                  <Text style={styles.formBtnText}>Скасувати</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.formBtn, styles.saveBtn]}
-                  onPress={handlePasswordChange}
-                  disabled={updating}
-                >
-                  {updating ? (
-                    <ActivityIndicator size="small" color="#FFFFFF" />
-                  ) : (
-                    <Text style={[styles.formBtnText, { color: '#FFFFFF' }]}>
-                      Зберегти
-                    </Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
-        </View>
-
-        {/* Кнопка виходу */}
-        <View style={styles.logoutSection}>
           <ProfileButton
-            title="ВИЙТИ"
+            icon="calendar-outline"
+            title="Рiчнi перевiрки"
+            onPress={() =>
+              tabNavigate('AnnualChecks', undefined, {
+                pib: auth?.pib,
+                isAdmin: auth?.role === 'admin',
+              })
+            }
+          />
+
+          <ProfileButton
+            icon="settings-outline"
+            title="Налаштування"
+            onPress={() => tabNavigate('Settings')}
+          />
+
+          <ProfileButton
+            icon="log-out-outline"
+            title="Вийти"
             onPress={handleLogout}
-            style={[styles.navButton, { backgroundColor: '#DC2626' }]}
+            style={styles.btnLogout}
           />
         </View>
+
+        <View style={{ height: 40 }} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -263,168 +115,42 @@ export default function Profile({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F3F5F9',
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 15,
-    backgroundColor: '#F3F5F9',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#111827',
-    fontFamily: FONT,
-  },
-  backButton: {
-    backgroundColor: DARK,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 16,
-    ...SHADOW,
-  },
-  backButtonText: {
-    color: LIGHT,
-    fontSize: 16,
-    fontWeight: '700',
-    fontFamily: FONT,
+    backgroundColor: Colors.bgTertiary,
   },
   content: {
     flex: 1,
-    paddingHorizontal: 16,
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.xl,
   },
-  navigationSection: {
-    marginTop: 20,
-    gap: 14,
+  buttonList: {
+    alignItems: 'center',
+    gap: 16,
+    marginBottom: Spacing.xl,
   },
-  passwordSection: {
-    marginTop: 20,
-  },
-  logoutSection: {
-    marginTop: 30,
-    marginBottom: 40,
-  },
-  navButton: {
-    marginBottom: 0,
-  },
+  // Кнопки — однакові, сірі, фіксована ширина
   btn: {
-    height: 48,
-    borderRadius: 14,
+    width: '80%',
+    height: 50,
+    borderRadius: BorderRadius.lg,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 18,
-    ...SHADOW,
+    backgroundColor: '#D9DBDE',
+    borderWidth: 1,
+    borderColor: '#B0B3B8',
+    ...Shadows.medium,
   },
-  btnDark: {
-    backgroundColor: DARK,
-  },
-  btnLight: {
-    backgroundColor: '#7B7B7B',
+  btnIcon: {
+    marginRight: 10,
   },
   btnText: {
-    color: LIGHT,
+    color: '#555860',
     fontFamily: FONT,
-    fontSize: 18,
-    fontWeight: '800',
-  },
-  btnTextDark: {
-    color: LIGHT,
-    fontFamily: FONT,
-    fontSize: 18,
-    fontWeight: '800',
-  },
-  profileBtn: {
-    height: 48,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 18,
-    backgroundColor: '#D97706',
-    ...SHADOW,
-  },
-  profileBtnText: {
-    color: LIGHT,
-    fontFamily: FONT,
-    fontSize: 18,
-    fontWeight: '800',
-  },
-  passwordForm: {
-    backgroundColor: LIGHT,
-    borderRadius: 12,
-    padding: 20,
-    ...SHADOW,
-  },
-  formTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#111827',
-    fontFamily: FONT,
-    marginBottom: 20,
-    textAlign: 'center',
-  },
-  fieldContainer: {
-    marginBottom: 16,
-  },
-  fieldLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#111827',
-    fontFamily: FONT,
-    marginBottom: 6,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
     fontSize: 16,
-    fontFamily: FONT,
-    backgroundColor: LIGHT,
-    color: '#111827',
+    fontWeight: '400',
   },
-  disabledInput: {
+  btnLogout: {
     borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    backgroundColor: '#F9FAFB',
-  },
-  disabledInputText: {
-    fontSize: 16,
-    fontFamily: FONT,
-    color: '#6B7280',
-  },
-  formButtons: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 20,
-  },
-  formBtn: {
-    flex: 1,
-    height: 44,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cancelBtn: {
-    backgroundColor: '#F3F4F6',
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-  },
-  saveBtn: {
-    backgroundColor: '#10B981',
-  },
-  formBtnText: {
-    fontSize: 16,
-    fontWeight: '600',
-    fontFamily: FONT,
-    color: '#374151',
+    borderColor: '#E8B4B4',
   },
 });

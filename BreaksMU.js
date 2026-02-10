@@ -1,115 +1,53 @@
-﻿import React, { useContext, useEffect, useState } from 'react';
+import React, { useContext, useEffect, useState } from 'react';
 import {
-  SafeAreaView, View, Text, TouchableOpacity, Alert, StyleSheet, Platform,
+  SafeAreaView, View, Text, TouchableOpacity, Alert, StyleSheet,
   ScrollView, ActivityIndicator, Modal, FlatList
 } from 'react-native';
-import { AuthCtx } from './App';
-import api from './api';
+import { Ionicons } from '@expo/vector-icons';
+import { AuthCtx } from './contexts';
+import { getBreaksDataFromSupabase, getAllPilotsFromSupabase } from './supabaseData';
+import { Colors, Shadows, BorderRadius, Spacing, FONT } from './theme';
 
-const FONT = 'NewsCycle-Regular';
-
-// Колір фону залежно від статусу - як у CommissionTable
-const getColorStyle = (color) => {
-  switch (color) {
-    case 'red':
-      return { backgroundColor: '#EF4444', color: '#FFFFFF' };
-    case 'yellow':
-      return { backgroundColor: '#F59E0B', color: '#000000' };
-    case 'green':
-      return { backgroundColor: '#10B981', color: '#FFFFFF' };
-    default:
-      return { backgroundColor: '#F3F4F6', color: '#6B7280' };
-  }
+// Soft status colors — muted pastel tones
+const STATUS = {
+  green: { bg: '#E8F5E9', text: '#2E7D32', dot: '#4CAF50' },
+  yellow: { bg: '#FFF8E1', text: '#F57F17', dot: '#FFC107' },
+  red: { bg: '#FFEBEE', text: '#C62828', dot: '#EF5350' },
+  gray: { bg: Colors.bgTertiary, text: Colors.textTertiary, dot: '#D1D5DB' },
 };
 
-const ActionButton = ({ title, style, onPress, disabled }) => (
-  <TouchableOpacity onPress={onPress} activeOpacity={0.9} disabled={disabled}
-    style={[styles.btn, style, disabled && { opacity: 0.6 }]}>
-    <Text style={[styles.btnText, { fontFamily: FONT }]}>{title}</Text>
-  </TouchableOpacity>
-);
+const getStatus = (color) => STATUS[color] || STATUS.gray;
 
-// Оновлена DataCard за стилем CommissionTable
-const DataCard = ({ title, items }) => (
-  <View style={styles.card}>
-    <Text style={[styles.cardTitle, { fontFamily: FONT }]}>{title}</Text>
-    <View style={styles.itemsContainer}>
-      {items.map((item, index) => {
-        const hasDate = item.date && item.date.trim() !== '' && item.date !== 'Немає даних';
-        const colorStyle = getColorStyle(item.color);
-        
-        return (
-          <View key={index} style={styles.itemRow}>
-            <Text style={[styles.aircraftText, { fontFamily: FONT }]}>
-              {item.aircraft || 'Загальний'}
-            </Text>
-            
-            <View style={styles.dateSection}>
-              {hasDate ? (
-                <View style={[styles.dateChip, colorStyle]}>
-                  <Text style={[styles.dateText, { 
-                    fontFamily: FONT, 
-                    color: colorStyle.color 
-                  }]}>
-                    {item.date}
-                  </Text>
-                </View>
-              ) : (
-                <View style={styles.emptyDateChip}>
-                  <Text style={[styles.dashText, { fontFamily: FONT }]}>—</Text>
-                </View>
-              )}
-            </View>
-          </View>
-        );
-      })}
-      
-      {items.length === 0 && (
-        <Text style={[styles.noDataText, { fontFamily: FONT }]}>
-          Немає даних
-        </Text>
-      )}
-    </View>
-  </View>
-);
-
+// Pilot selector modal
 const PilotSelector = ({ pilots, selectedPilot, onSelect, visible, onClose }) => {
-  const cleanPilotName = (name) => {
-    return name.replace(/^.*?\d{4}\s*\d{2}:\d{2}:\d{2}.*?\)\s*/, '').trim();
-  };
+  const cleanName = (n) => n.replace(/^.*?\d{4}\s*\d{2}:\d{2}:\d{2}.*?\)\s*/, '').trim();
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.modalBackdrop}>
         <View style={styles.modalCard}>
+          <Text style={styles.modalTitle}>Оберiть льотчика</Text>
           <FlatList
             data={pilots}
-            keyExtractor={(item, idx) => item + '_' + idx}
+            keyExtractor={(item, i) => item + '_' + i}
             style={{ maxHeight: 400 }}
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                onPress={() => onSelect(item)}
-                style={[
-                  styles.pilotRow,
-                  selectedPilot === item && styles.selectedPilotRow
-                ]}
-              >
-                <Text style={[
-                  styles.pilotText,
-                  { fontFamily: FONT },
-                  selectedPilot === item && styles.selectedPilotText
-                ]}>
-                  {cleanPilotName(item)}
-                </Text>
-              </TouchableOpacity>
-            )}
+            renderItem={({ item }) => {
+              const active = selectedPilot === item;
+              return (
+                <TouchableOpacity
+                  onPress={() => onSelect(item)}
+                  style={[styles.pilotRow, active && styles.pilotRowActive]}
+                >
+                  <Text style={[styles.pilotText, active && styles.pilotTextActive]}>
+                    {cleanName(item)}
+                  </Text>
+                  {active && <Ionicons name="checkmark" size={18} color={Colors.primary} />}
+                </TouchableOpacity>
+              );
+            }}
           />
-
-          <TouchableOpacity
-            style={styles.closeButton}
-            onPress={onClose}
-          >
-            <Text style={[styles.closeButtonText, { fontFamily: FONT }]}>ЗАКРИТИ</Text>
+          <TouchableOpacity style={styles.modalClose} onPress={onClose}>
+            <Text style={styles.modalCloseText}>Закрити</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -120,141 +58,150 @@ const PilotSelector = ({ pilots, selectedPilot, onSelect, visible, onClose }) =>
 export default function BreaksMU({ route, navigation }) {
   const { auth } = useContext(AuthCtx);
   const { pib: routePib, isAdmin } = route.params || {};
-  
+
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState({});
   const [selectedPilot, setSelectedPilot] = useState(routePib || auth?.pib || '');
   const [pilots, setPilots] = useState([]);
   const [showPilotSelector, setShowPilotSelector] = useState(false);
 
-  // Завантаження списку пілотів для адміна
   useEffect(() => {
-    const loadPilots = async () => {
-      if (!isAdmin || !auth?.token) return;
-      
+    if (!isAdmin) return;
+    (async () => {
       try {
-        const result = await api.getValidationPilots(auth.token);
-        if (result?.ok && result.pilots) {
-          setPilots(result.pilots);
-          return;
-        }
-        
-        const fallbackResult = await api.getAllPilots(auth.token);
-        if (fallbackResult?.ok && fallbackResult.pilots) {
-          setPilots(fallbackResult.pilots);
-        }
-      } catch (error) {
-        console.warn('Помилка завантаження списку льотчиків:', error);
-        setPilots([]);
-      }
-    };
-    
-    loadPilots();
-  }, [isAdmin, auth?.token]);
+        const res = await getAllPilotsFromSupabase();
+        if (res?.ok) setPilots(res.pilots);
+      } catch (_) { setPilots([]); }
+    })();
+  }, [isAdmin]);
 
-  // Завантаження даних перерв
   const loadData = async () => {
-    if (!auth?.token || !selectedPilot) return;
-
+    if (!selectedPilot) return;
     try {
       setLoading(true);
-      const result = await api.getBreaksData(auth.token, selectedPilot);
-      
-      if (!result?.ok) {
-        throw new Error(result?.error || 'Помилка завантаження даних');
-      }
-      
-      console.log('Дані з API:', JSON.stringify(result.data, null, 2));
-      setData(result.data || {});
-    } catch (error) {
-      Alert.alert('Помилка', String(error.message || error));
+      const res = await getBreaksDataFromSupabase(selectedPilot);
+      if (!res?.ok) throw new Error(res?.error || 'Помилка');
+      setData(res.data || {});
+    } catch (e) {
+      Alert.alert('Помилка', String(e.message || e));
       setData({});
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    loadData();
-  }, [selectedPilot, auth?.token]);
+  useEffect(() => { loadData(); }, [selectedPilot]);
 
-  const handlePilotSelect = (pilot) => {
-    setSelectedPilot(pilot);
-    setShowPilotSelector(false);
-  };
-
-  const cleanPilotName = (name) => {
-    return name.replace(/^.*?\d{4}\s*\d{2}:\d{2}:\d{2}.*?\)\s*/, '').trim();
-  };
+  const cleanName = (n) => n.replace(/^.*?\d{4}\s*\d{2}:\d{2}:\d{2}.*?\)\s*/, '').trim();
+  const currentIsAdmin = isAdmin || (auth?.role === 'admin');
+  const muData = data.mu || {};
+  const muTypes = ['ДПМУ', 'ДСМУ', 'ДВМП', 'НПМУ', 'НСМУ', 'НВМП'];
 
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
-          <Text style={[styles.title, { fontFamily: FONT }]}>Перерви за МУ</Text>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => navigation.goBack()}
-          >
-            <Text style={[styles.backButtonText, { fontFamily: FONT }]}>Назад</Text>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+            <Ionicons name="chevron-back" size={22} color={Colors.textPrimary} />
           </TouchableOpacity>
+          <Text style={styles.headerTitle}>Перерви за МУ</Text>
+          <View style={{ width: 36 }} />
         </View>
-        
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#4A90E2" />
-          <Text style={[styles.loadingText, { fontFamily: FONT }]}>
-            Завантаження даних перерв...
-          </Text>
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color={Colors.textTertiary} />
         </View>
       </SafeAreaView>
     );
   }
 
-  const muData = data.mu || {};
-  const muTypes = ['ДПМУ', 'ДСМУ', 'ДВМП', 'НПМУ', 'НСМУ', 'НВМП'];
-  const currentIsAdmin = isAdmin || (auth?.role === 'admin');
-
   return (
     <SafeAreaView style={styles.container}>
+      {/* Header */}
       <View style={styles.header}>
-        <Text style={[styles.title, { fontFamily: FONT }]}>Перерви за МУ</Text>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Text style={[styles.backButtonText, { fontFamily: FONT }]}>Назад</Text>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+          <Ionicons name="chevron-back" size={22} color={Colors.textPrimary} />
         </TouchableOpacity>
+        <Text style={styles.headerTitle}>Перерви за МУ</Text>
+        <View style={{ width: 36 }} />
       </View>
 
+      {/* Admin pilot selector */}
       {currentIsAdmin && (
-        <View style={styles.filterContainer}>
-          <TouchableOpacity
-            style={styles.filterButton}
-            onPress={() => setShowPilotSelector(true)}
-          >
-            <Text style={[styles.filterButtonText, { fontFamily: FONT }]}>
-              {cleanPilotName(selectedPilot) || 'Оберіть льотчика'}
-            </Text>
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity
+          style={styles.pilotSelector}
+          onPress={() => setShowPilotSelector(true)}
+        >
+          <Ionicons name="person-outline" size={16} color={Colors.textSecondary} />
+          <Text style={styles.pilotSelectorText}>
+            {cleanName(selectedPilot) || 'Оберiть льотчика'}
+          </Text>
+          <Ionicons name="chevron-down" size={16} color={Colors.textTertiary} />
+        </TouchableOpacity>
       )}
 
-      <ScrollView style={styles.scrollView}>
-        <View style={styles.content}>
-          {muTypes.map(muType => (
-            <DataCard
-              key={muType}
-              title={muType}
-              items={muData[muType] || []}
-            />
-          ))}
-        </View>
+      {/* Column headers */}
+      <View style={styles.columnHeaders}>
+        <Text style={styles.colHeaderLeft}>Тип ЛА</Text>
+        <Text style={styles.colHeaderCenter}>Останнiй полiт</Text>
+        <Text style={styles.colHeaderRight}>Дiйсний до</Text>
+      </View>
+
+      <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
+        {muTypes.map((muType) => {
+          const items = muData[muType] || [];
+          return (
+            <View key={muType} style={styles.section}>
+              {/* Section title */}
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>{muType}</Text>
+              </View>
+
+              {/* Items */}
+              {items.length > 0 ? items.map((item, idx) => {
+                const s = getStatus(item.color);
+                return (
+                  <View
+                    key={idx}
+                    style={[styles.row, idx === items.length - 1 && styles.rowLast]}
+                  >
+                    {/* Status dot + aircraft */}
+                    <View style={styles.rowLeft}>
+                      <View style={[styles.dot, { backgroundColor: s.dot }]} />
+                      <Text style={styles.aircraftText}>
+                        {item.aircraft || '—'}
+                      </Text>
+                    </View>
+
+                    {/* Dates */}
+                    <View style={styles.rowRight}>
+                      <View style={[styles.dateBox, { backgroundColor: s.bg }]}>
+                        <Text style={[styles.dateText, { color: s.text }]}>
+                          {item.date || '—'}
+                        </Text>
+                      </View>
+                      <View style={[styles.dateBox, styles.expiryBox, { backgroundColor: s.bg }]}>
+                        <Text style={[styles.dateText, { color: s.text }]}>
+                          {item.expiryDate || '—'}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                );
+              }) : (
+                <View style={styles.emptyRow}>
+                  <Text style={styles.emptyText}>Немає даних</Text>
+                </View>
+              )}
+            </View>
+          );
+        })}
+        <View style={{ height: 32 }} />
       </ScrollView>
 
       <PilotSelector
         pilots={pilots}
         selectedPilot={selectedPilot}
-        onSelect={handlePilotSelect}
+        onSelect={(p) => { setSelectedPilot(p); setShowPilotSelector(false); }}
         visible={showPilotSelector}
         onClose={() => setShowPilotSelector(false)}
       />
@@ -265,195 +212,244 @@ export default function BreaksMU({ route, navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F4F6F8',
+    backgroundColor: Colors.bgSecondary,
   },
+
+  // Header
   header: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 15,
-    backgroundColor: '#FFFFFF',
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    backgroundColor: Colors.bgPrimary,
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    borderBottomColor: Colors.borderLight,
   },
-  title: {
-    fontSize: 24,
-    fontWeight: '600',
-    color: '#1F2937',
-  },
-  backButton: {
-    backgroundColor: '#6B7280',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  backButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  filterContainer: {
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 20,
-    paddingVertical: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-  },
-  filterButton: {
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#F9FAFB',
-  },
-  filterButtonText: {
-    fontSize: 16,
-    color: '#374151',
-  },
-  scrollView: {
-    flex: 1,
-  },
-  content: {
-    padding: 16,
-  },
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+  backBtn: {
+    width: 36,
+    height: 36,
     alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: BorderRadius.sm,
   },
-  cardTitle: {
+  headerTitle: {
+    fontFamily: FONT,
     fontSize: 18,
-    fontWeight: '600',
-    color: '#1F2937',
-    marginBottom: 12,
+    fontWeight: '400',
+    color: Colors.textPrimary,
+  },
+
+  // Pilot selector
+  pilotSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: Spacing.lg,
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.xs,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 10,
+    backgroundColor: Colors.bgPrimary,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  pilotSelectorText: {
+    flex: 1,
+    fontFamily: FONT,
+    fontSize: 15,
+    fontWeight: '400',
+    color: Colors.textPrimary,
+  },
+
+  // Column headers
+  columnHeaders: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+    marginTop: Spacing.sm,
+  },
+  colHeaderLeft: {
+    flex: 1,
+    fontFamily: FONT,
+    fontSize: 12,
+    fontWeight: '400',
+    color: Colors.textTertiary,
+  },
+  colHeaderCenter: {
+    width: 100,
+    fontFamily: FONT,
+    fontSize: 12,
+    fontWeight: '400',
+    color: Colors.textTertiary,
     textAlign: 'center',
   },
-  itemsContainer: {
-    width: '100%',
+  colHeaderRight: {
+    width: 100,
+    fontFamily: FONT,
+    fontSize: 12,
+    fontWeight: '400',
+    color: Colors.textTertiary,
+    textAlign: 'center',
+    marginLeft: 6,
+  },
+
+  // Scroll
+  scroll: {
+    flex: 1,
+  },
+
+  // Section (one MU type)
+  section: {
+    marginHorizontal: Spacing.lg,
+    marginBottom: Spacing.sm,
+    backgroundColor: Colors.bgPrimary,
+    borderRadius: BorderRadius.md,
+    ...Shadows.small,
+    overflow: 'hidden',
+  },
+  sectionHeader: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 8,
+    backgroundColor: Colors.bgTertiary,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.borderLight,
+  },
+  sectionTitle: {
+    fontFamily: FONT,
+    fontSize: 14,
+    fontWeight: '400',
+    color: Colors.textPrimary,
+    letterSpacing: 0.5,
+  },
+
+  // Row — one aircraft
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.borderLight,
+  },
+  rowLast: {
+    borderBottomWidth: 0,
+  },
+  rowLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
   },
-  itemRow: {
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  aircraftText: {
+    fontFamily: FONT,
+    fontSize: 14,
+    fontWeight: '400',
+    color: Colors.textPrimary,
+  },
+  rowRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+
+  // Date boxes
+  dateBox: {
+    width: 100,
+    paddingVertical: 5,
+    paddingHorizontal: 8,
+    borderRadius: 6,
+    alignItems: 'center',
+  },
+  expiryBox: {
+    // slightly different styling can go here if needed
+  },
+  dateText: {
+    fontFamily: FONT,
+    fontSize: 13,
+    fontWeight: '400',
+  },
+
+  // Empty
+  emptyRow: {
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  emptyText: {
+    fontFamily: FONT,
+    fontSize: 13,
+    fontWeight: '400',
+    color: Colors.textTertiary,
+    fontStyle: 'italic',
+  },
+
+  // Centered loading
+  centered: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  // Modal
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  modalCard: {
+    backgroundColor: Colors.bgPrimary,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.lg,
+    ...Shadows.large,
+  },
+  modalTitle: {
+    fontFamily: FONT,
+    fontSize: 16,
+    fontWeight: '400',
+    color: Colors.textPrimary,
+    textAlign: 'center',
+    marginBottom: Spacing.md,
+  },
+  pilotRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 4,
-  },
-  aircraftText: {
-    fontSize: 16,
-    color: '#374151',
-    flex: 1,
-  },
-  dateSection: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  dateChip: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
-    minWidth: 120,
-    alignItems: 'center',
-  },
-  emptyDateChip: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
-    minWidth: 120,
-    alignItems: 'center',
-    backgroundColor: '#F3F4F6',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderStyle: 'dashed',
-  },
-  dateText: {
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  dashText: {
-    fontSize: 24,
-    color: '#9CA3AF',
-  },
-  noDataText: {
-    fontSize: 16,
-    color: '#9CA3AF',
-    textAlign: 'center',
-    fontStyle: 'italic',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    fontSize: 16,
-    color: '#6B7280',
-    marginTop: 16,
-  },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 20,
-    margin: 20,
-    maxWidth: '90%',
-    minWidth: '80%',
-  },
-  pilotRow: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    paddingVertical: 11,
+    paddingHorizontal: Spacing.md,
     borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
+    borderBottomColor: Colors.borderLight,
   },
-  selectedPilotRow: {
-    backgroundColor: '#EBF8FF',
+  pilotRowActive: {
+    backgroundColor: Colors.bgTertiary,
   },
   pilotText: {
-    fontSize: 16,
-    color: '#374151',
+    fontFamily: FONT,
+    fontSize: 15,
+    fontWeight: '400',
+    color: Colors.textPrimary,
   },
-  selectedPilotText: {
-    color: '#1D4ED8',
-    fontWeight: '500',
+  pilotTextActive: {
+    color: Colors.primary,
   },
-  closeButton: {
-    backgroundColor: '#6B7280',
-    paddingVertical: 12,
-    borderRadius: 8,
-    marginTop: 16,
+  modalClose: {
+    marginTop: Spacing.md,
+    paddingVertical: 11,
+    borderRadius: BorderRadius.sm,
+    backgroundColor: Colors.bgTertiary,
     alignItems: 'center',
   },
-  closeButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  btn: {
-    borderRadius: 14,
-    paddingVertical: 14,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.18,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 3,
-  },
-  btnText: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '800',
+  modalCloseText: {
+    fontFamily: FONT,
+    fontSize: 15,
+    fontWeight: '400',
+    color: Colors.textPrimary,
   },
 });

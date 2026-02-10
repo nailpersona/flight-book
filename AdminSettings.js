@@ -1,7 +1,8 @@
 import React, { useContext } from 'react';
 import { SafeAreaView, View, StyleSheet, Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AuthCtx } from './App';
+import { AuthCtx } from './contexts';
+import { TabNavigationContext } from './FixedTabNavigator';
 
 const FONT = 'NewsCycle-Regular';
 
@@ -11,6 +12,7 @@ const CardBtn = ({ title, onPress }) => (
 
 export default function AdminSettings({ navigation }) {
   const { auth } = useContext(AuthCtx);
+  const { tabNavigate } = useContext(TabNavigationContext);
   const insets = useSafeAreaInsets();
 
   return (
@@ -19,8 +21,8 @@ export default function AdminSettings({ navigation }) {
         <Text style={styles.h1}>Налаштування</Text>
         <Text style={styles.sub}>ПІБ: {auth?.pib || '-'}</Text>
 
-        <CardBtn title="ПРОФІЛЬ" onPress={()=> navigation.navigate('Profile', { token: auth?.token })} />
-        <CardBtn title="КОРИСТУВАЧІ" onPress={()=> navigation.navigate('AdminUsers', { token: auth?.token })} />
+        <CardBtn title="ПРОФІЛЬ" onPress={()=> tabNavigate('Profile', undefined, { token: auth?.token })} />
+        <CardBtn title="КОРИСТУВАЧІ" onPress={()=> tabNavigate('AdminUsers', undefined, { token: auth?.token })} />
       </View>
     </SafeAreaView>
   );

@@ -3,28 +3,14 @@ import React, { useCallback, useContext, useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, RefreshControl,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
-import { AuthCtx } from './App';
+import { AuthCtx } from './contexts';
 import api from './api';
+import { Colors, Shadows, BorderRadius, Spacing, FONT } from './theme';
+import { TabNavigationContext } from './FixedTabNavigator';
 
-const FONT = 'NewsCycle-Regular';
-const DARK = '#333';
-const LIGHT = '#fff';
-const BORDER = '#E5E7EB';
-const TEXT = '#111827';
-
-const DarkButton = ({ title, onPress, style, leftIcon }) => (
-  <TouchableOpacity onPress={onPress} activeOpacity={0.9} style={[styles.btn, styles.btnDark, style]}>
-    <Text style={styles.btnText}>{leftIcon ? leftIcon + ' ' : ''}{title}</Text>
-  </TouchableOpacity>
-);
-const GrayButton = ({ title, onPress, style, leftIcon }) => (
-  <TouchableOpacity onPress={onPress} activeOpacity={0.9} style={[styles.btn, styles.btnGray, style]}>
-    <Text style={styles.btnText}>{leftIcon ? leftIcon + ' ' : ''}{title}</Text>
-  </TouchableOpacity>
-);
-
-/** Дата → DD.MM.YYYY (без часу) */
+/** Дата → DD.MM.YYYY */
 function parseDateToDDMMYYYY(v) {
   if (!v) return '';
   const d = v instanceof Date ? v : new Date(v);
@@ -35,18 +21,16 @@ function parseDateToDDMMYYYY(v) {
   return `${dd}.${mm}.${yy}`;
 }
 
-/** "01.09.2025" -> 20250901 (для сортування) */
+/** "01.09.2025" -> 20250901 */
 function dmyToNum(s) {
   const m = String(s || '').match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
   if (!m) return 0;
   return Number(m[3] + m[2] + m[1]);
 }
 
-/** Витягнути тільки час HH:MM:SS з будь-якого значення */
+/** Витягнути тільки час HH:MM:SS */
 function onlyTimeHHMMSS(v) {
   if (v == null) return '';
-
-  // Якщо це Date або ISO — повертаємо тільки час (локальний)
   const maybeDate = v instanceof Date ? v : new Date(v);
   if (!isNaN(maybeDate.getTime())) {
     const hh = String(maybeDate.getHours()).padStart(2, '0');
@@ -54,14 +38,9 @@ function onlyTimeHHMMSS(v) {
     const ss = String(maybeDate.getSeconds()).padStart(2, '0');
     return `${hh}:${mm}:${ss}`;
   }
-
   const s = String(v).trim();
-
-  // ISO "....THH:MM:SS"
   const iso = s.match(/T(\d{2}):(\d{2}):(\d{2})/);
   if (iso) return `${iso[1]}:${iso[2]}:${iso[3]}`;
-
-  // HH:MM[:SS]
   const m = s.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
   if (m) {
     const hh = String(+m[1]).padStart(2, '0');
@@ -69,30 +48,32 @@ function onlyTimeHHMMSS(v) {
     const ss = String(m[3] ? +m[3] : 0).padStart(2, '0');
     return `${hh}:${mm}:${ss}`;
   }
-
-  // H.MM / H,MM (де друга частина — хвилини, НЕ десяткова)
   const s2 = s.replace(',', '.');
   const mHM = s2.match(/^(\d+)\.(\d{1,2})$/);
   if (mHM) {
-    let hh = +mHM[1];
-    let mm = +mHM[2];
-    hh += Math.floor(mm / 60);
-    mm = mm % 60;
+    let hh = +mHM[1], mm = +mHM[2];
+    hh += Math.floor(mm / 60); mm = mm % 60;
     return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:00`;
   }
-
-  // Просто число — години
-  if (/^\d+$/.test(s2)) {
-    const hh = +s2;
-    return `${String(hh).padStart(2, '0')}:00:00`;
-  }
-
-  // Інакше — як є
+  if (/^\d+$/.test(s2)) return `${String(+s2).padStart(2, '0')}:00:00`;
   return s;
+}
+
+/** Рядок деталі */
+function DetailRow({ icon, label, value }) {
+  if (!value || value === '-' || value === '0' || value === '00:00:00') return null;
+  return (
+    <View style={s.detailRow}>
+      <Ionicons name={icon} size={14} color={Colors.textTertiary} />
+      <Text style={s.detailLabel}>{label}</Text>
+      <Text style={s.detailValue}>{value}</Text>
+    </View>
+  );
 }
 
 export default function MyRecords({ navigation }) {
   const { auth } = useContext(AuthCtx);
+  const { tabNavigate } = useContext(TabNavigationContext);
   const [items, setItems] = useState([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -104,7 +85,6 @@ export default function MyRecords({ navigation }) {
       const r = await api.rows(auth.token);
       if (!r?.ok) throw new Error(r?.error || 'Не вдалося завантажити записи');
 
-      // Сортуємо: якщо дата як "DD.MM.YYYY" — dmyToNum, інакше Date
       const sorted = [...(r.items || [])].sort((a, b) => {
         const aD = a['Дата'], bD = b['Дата'];
         const aNum = dmyToNum(aD);
@@ -125,7 +105,7 @@ export default function MyRecords({ navigation }) {
   }, [auth?.token]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
-  useEffect(() => { load(); }, []); // підстраховка
+  useEffect(() => { load(); }, []);
 
   const onDelete = (it) => {
     Alert.alert('Видалити запис', 'Підтвердити видалення?', [
@@ -149,109 +129,285 @@ export default function MyRecords({ navigation }) {
   };
 
   const onEdit = (it) => {
-    navigation.navigate('Main', { edit: { row: it._row, data: it } });
+    tabNavigate('Main', undefined, { edit: { row: it._row, data: it } });
   };
 
   const renderItem = ({ item }) => {
-    const titleLeft = isAdmin ? `${item['ПІБ'] || ''} · ` : '';
-    const title = `${titleLeft}${parseDateToDDMMYYYY(item['Дата'])} · ${item['Тип ПС'] || ''}`;
-
+    const date = parseDateToDDMMYYYY(item['Дата']);
+    const typePs = String(item['Тип ПС'] || '').trim();
+    const pib = isAdmin ? String(item['ПІБ'] || '').trim() : '';
+    const nalitFull = onlyTimeHHMMSS(item['Наліт']);
+    const nalit = nalitFull ? nalitFull.replace(/:(\d{2})$/, '') : '';
     const pol = String(item['Польотів'] || '').trim();
     const bz = String(item['Бойових заст.'] || '').trim();
-    const nalit = onlyTimeHHMMSS(item['Наліт']);
     const chas = String(item['Час доби МУ'] || '').trim();
     const vid = String(item['Вид пол.'] || item['Вид польоту'] || '').trim();
     const notes = String(item['Примітки'] || '').trim();
+    const docSource = String(item['Згідно чого'] || item['document_source'] || '').trim();
+    const flightPurpose = String(item['Мета польоту'] || item['flight_purpose'] || '').trim();
+    const testTopic = String(item['Тема випробування'] || item['test_flight_topic'] || '').trim();
+    const fuelAirfield = String(item['Аеродром палива'] || item['fuel_airfield'] || '').trim();
+    const fuelAmount = String(item['Паливо'] || item['fuel_amount'] || '').trim();
+    const fuelText = fuelAirfield && fuelAmount ? `${fuelAirfield} — ${fuelAmount} кг` : fuelAmount ? `${fuelAmount} кг` : '';
 
     return (
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>{title}</Text>
+      <View style={s.card}>
+        {/* Шапка картки */}
+        <View style={s.cardHeader}>
+          <View style={s.cardHeaderLeft}>
+            <View style={s.dateBadge}>
+              <Text style={s.dateBadgeText}>{date}</Text>
+            </View>
+            {!!typePs && <Text style={s.typeText}>{typePs}</Text>}
+          </View>
+          {!!pib && <Text style={s.pibText}>{pib}</Text>}
+        </View>
 
-        <Text style={styles.rowText}>
-          <Text style={styles.muted}>Польотів: </Text>
-          <Text style={styles.val}>{pol || '0'}</Text>
-          <Text style={styles.muted}> | Наліт: </Text>
-          <Text style={styles.val}>{nalit || '00:00:00'}</Text>
-          <Text style={styles.muted}> | БЗ: </Text>
-          <Text style={styles.val}>{bz || '0'}</Text>
-        </Text>
+        {/* Основні числа */}
+        <View style={s.statsRow}>
+          <View style={s.statItem}>
+            <Text style={s.statValue}>{nalit || '00:00'}</Text>
+            <Text style={s.statLabel}>Наліт</Text>
+          </View>
+          {!!pol && pol !== '0' && (
+            <View style={s.statItem}>
+              <Text style={s.statValue}>{pol}</Text>
+              <Text style={s.statLabel}>Польотів</Text>
+            </View>
+          )}
+          {!!bz && bz !== '0' && (
+            <View style={s.statItem}>
+              <Text style={s.statValue}>{bz}</Text>
+              <Text style={s.statLabel}>Бой. заст.</Text>
+            </View>
+          )}
+        </View>
 
-        <Text style={styles.rowText}>
-          <Text style={styles.muted}>Час доби: </Text>
-          <Text style={styles.val}>{chas || '-'}</Text>
-          <Text style={styles.muted}> | Вид польоту: </Text>
-          <Text style={styles.val}>{vid || '-'}</Text>
-        </Text>
+        {/* Деталі — з'являються якщо заповнені */}
+        <View style={s.detailsBlock}>
+          <DetailRow icon="sunny-outline" label="Час доби МУ" value={chas} />
+          <DetailRow icon="navigate-outline" label="Вид польоту" value={vid} />
+          <DetailRow icon="book-outline" label="Згідно чого" value={docSource} />
+          <DetailRow icon="flag-outline" label="Мета польоту" value={flightPurpose} />
+          <DetailRow icon="flask-outline" label="Тема випробування" value={testTopic} />
+          <DetailRow icon="flame-outline" label="Паливо" value={fuelText} />
+          <DetailRow icon="ribbon-outline" label="Досягнення" value={notes} />
+        </View>
 
-        {!!notes && (
-          <Text style={styles.rowText}>
-            <Text style={styles.muted}>Досягнення: </Text>
-            <Text style={styles.val}>{notes}</Text>
-          </Text>
-        )}
-
-        <View style={{ flexDirection: 'row', gap: 12, marginTop: 12 }}>
-          <DarkButton title="Редагувати" leftIcon="✏️" onPress={() => onEdit(item)} style={{ flex: 1 }} />
-          <GrayButton title="Видалити" leftIcon="🗑️" onPress={() => onDelete(item)} style={{ flex: 1 }} />
+        {/* Кнопки */}
+        <View style={s.actions}>
+          <TouchableOpacity onPress={() => onEdit(item)} activeOpacity={0.7} style={s.actionBtn}>
+            <Ionicons name="create-outline" size={16} color={Colors.textSecondary} />
+            <Text style={s.actionText}>Редагувати</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => onDelete(item)} activeOpacity={0.7} style={s.actionBtn}>
+            <Ionicons name="trash-outline" size={16} color={Colors.error} />
+            <Text style={[s.actionText, { color: Colors.error }]}>Видалити</Text>
+          </TouchableOpacity>
         </View>
       </View>
     );
   };
 
   return (
-    <View style={styles.safe}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Мої записи</Text>
-        <TouchableOpacity onPress={() => navigation.goBack()} activeOpacity={0.9} style={styles.backBtn}>
-          <Text style={styles.backBtnText}>Назад</Text>
+    <View style={s.safe}>
+      {/* Header */}
+      <View style={s.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()} activeOpacity={0.7} style={s.backBtn}>
+          <Ionicons name="chevron-back" size={20} color={Colors.textPrimary} />
         </TouchableOpacity>
+        <Text style={s.title}>Мої записи</Text>
+        <View style={{ width: 36 }} />
       </View>
 
       <FlatList
         data={items}
         keyExtractor={(it, idx) => String(it._row || idx)}
         renderItem={renderItem}
-        contentContainerStyle={{ padding: 16, paddingTop: 8, paddingBottom: 24 }}
+        contentContainerStyle={s.list}
         refreshControl={
-          <RefreshControl refreshing={loading} onRefresh={load} colors={[DARK]} tintColor={DARK} />
+          <RefreshControl refreshing={loading} onRefresh={load} colors={[Colors.primary]} tintColor={Colors.primary} />
         }
         ListEmptyComponent={!loading ? (
-          <Text style={[styles.muted, { paddingHorizontal: 16 }]}>Немає записів.</Text>
+          <View style={s.emptyWrap}>
+            <Ionicons name="document-text-outline" size={40} color={Colors.textTertiary} />
+            <Text style={s.emptyText}>Немає записів</Text>
+          </View>
         ) : null}
       />
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#F4F6F8' },
+const s = StyleSheet.create({
+  safe: {
+    flex: 1,
+    backgroundColor: Colors.bgTertiary,
+  },
 
+  // Header
   header: {
-    paddingHorizontal: 16, paddingTop: 8, paddingBottom: 8,
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+    backgroundColor: Colors.bgPrimary,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Colors.border,
   },
-  title: { fontFamily: FONT, fontSize: 28, fontWeight: '800', color: TEXT },
   backBtn: {
-    backgroundColor: DARK, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 8,
-    shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 3,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.bgTertiary,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  backBtnText: { color: LIGHT, fontFamily: FONT, fontSize: 16, fontWeight: '700' },
+  title: {
+    fontFamily: FONT,
+    fontSize: 18,
+    fontWeight: '400',
+    color: Colors.textPrimary,
+  },
 
+  // List
+  list: {
+    padding: Spacing.lg,
+    paddingBottom: 32,
+  },
+
+  // Card
   card: {
-    backgroundColor: LIGHT, borderRadius: 16, padding: 14, marginBottom: 14,
-    borderWidth: 1, borderColor: BORDER,
-    shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 2,
+    backgroundColor: Colors.bgPrimary,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.lg,
+    marginBottom: Spacing.md,
+    ...Shadows.small,
   },
-  cardTitle: { fontFamily: FONT, fontSize: 18, fontWeight: '800', color: TEXT, marginBottom: 8 },
-  rowText: { fontFamily: FONT, fontSize: 16, color: TEXT, marginTop: 4 },
-  muted: { fontFamily: FONT, fontSize: 16, color: '#6B7280' },
-  val: { fontFamily: FONT, fontSize: 16, color: TEXT },
 
-  btn: {
-    height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center',
-    shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 3,
+  // Card header
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.md,
   },
-  btnDark: { backgroundColor: DARK },
-  btnGray: { backgroundColor: '#7B7B7B' },
-  btnText: { color: LIGHT, fontFamily: FONT, fontSize: 18, fontWeight: '800' },
+  cardHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  dateBadge: {
+    backgroundColor: Colors.primary,
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  dateBadgeText: {
+    fontFamily: FONT,
+    fontSize: 13,
+    fontWeight: '400',
+    color: Colors.textInverse,
+  },
+  typeText: {
+    fontFamily: FONT,
+    fontSize: 15,
+    fontWeight: '400',
+    color: Colors.textPrimary,
+  },
+  pibText: {
+    fontFamily: FONT,
+    fontSize: 13,
+    fontWeight: '400',
+    color: Colors.textSecondary,
+  },
+
+  // Stats row
+  statsRow: {
+    flexDirection: 'row',
+    backgroundColor: Colors.bgSecondary,
+    borderRadius: BorderRadius.md,
+    padding: Spacing.md,
+    gap: Spacing.lg,
+    marginBottom: Spacing.md,
+  },
+  statItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  statValue: {
+    fontFamily: FONT,
+    fontSize: 17,
+    fontWeight: '400',
+    color: Colors.textPrimary,
+    marginBottom: 2,
+  },
+  statLabel: {
+    fontFamily: FONT,
+    fontSize: 11,
+    fontWeight: '400',
+    color: Colors.textTertiary,
+  },
+
+  // Details
+  detailsBlock: {
+    gap: 6,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    paddingVertical: 2,
+  },
+  detailLabel: {
+    fontFamily: FONT,
+    fontSize: 13,
+    fontWeight: '400',
+    color: Colors.textTertiary,
+    width: 120,
+  },
+  detailValue: {
+    fontFamily: FONT,
+    fontSize: 13,
+    fontWeight: '400',
+    color: Colors.textPrimary,
+    flex: 1,
+  },
+
+  // Actions
+  actions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: Spacing.lg,
+    marginTop: Spacing.md,
+    paddingTop: Spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Colors.borderLight,
+  },
+  actionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 4,
+  },
+  actionText: {
+    fontFamily: FONT,
+    fontSize: 13,
+    fontWeight: '400',
+    color: Colors.textSecondary,
+  },
+
+  // Empty
+  emptyWrap: {
+    alignItems: 'center',
+    paddingTop: 60,
+    gap: 10,
+  },
+  emptyText: {
+    fontFamily: FONT,
+    fontSize: 15,
+    fontWeight: '400',
+    color: Colors.textTertiary,
+  },
 });
