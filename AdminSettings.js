@@ -21,8 +21,8 @@ export default function AdminSettings({ navigation }) {
         <Text style={styles.h1}>Налаштування</Text>
         <Text style={styles.sub}>ПІБ: {auth?.pib || '-'}</Text>
 
-        <CardBtn title="ПРОФІЛЬ" onPress={()=> tabNavigate('Profile', undefined, { token: auth?.token })} />
-        <CardBtn title="КОРИСТУВАЧІ" onPress={()=> tabNavigate('AdminUsers', undefined, { token: auth?.token })} />
+        <CardBtn title="ПРОФІЛЬ" onPress={()=> tabNavigate('Profile', undefined, {})} />
+        <CardBtn title="КОРИСТУВАЧІ" onPress={()=> tabNavigate('AdminUsers', undefined, {})} />
       </View>
     </SafeAreaView>
   );

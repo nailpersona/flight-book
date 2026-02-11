@@ -1,0 +1,217 @@
+/* readiness.module.css — Стан БГ dashboard */
+
+.container {
+  padding: 24px 32px;
+  max-width: 1600px;
+  margin: 0 auto;
+  font-family: 'News Cycle', sans-serif;
+}
+
+/* Header */
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+.title {
+  font-size: 22px;
+  font-weight: 400;
+  color: #111827;
+}
+.subtitle {
+  font-size: 14px;
+  color: #6B7280;
+  font-weight: 400;
+  margin-top: 4px;
+}
+.actions {
+  display: flex;
+  gap: 8px;
+}
+.actionBtn {
+  height: 40px;
+  padding: 0 16px;
+  border-radius: 10px;
+  border: 1px solid #E5E7EB;
+  background: #FFFFFF;
+  font-size: 14px;
+  font-weight: 400;
+  color: #111827;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: inherit;
+}
+.actionBtn:hover { background: #F9FAFB; }
+.actionBtnPrimary {
+  background: #111827;
+  color: #FFFFFF;
+  border-color: #111827;
+}
+.actionBtnPrimary:hover { background: #1F2937; }
+
+/* Summary cards */
+.summaryRow {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+.summaryCard {
+  flex: 1;
+  padding: 16px;
+  border-radius: 14px;
+  text-align: center;
+}
+.summaryValue {
+  font-size: 28px;
+  font-weight: 400;
+}
+.summaryLabel {
+  font-size: 12px;
+  font-weight: 400;
+  margin-top: 4px;
+}
+.summaryTotal { background: #111827; color: #FFFFFF; }
+.summaryTotal .summaryLabel { color: #9CA3AF; }
+.summaryGreen { background: #ECFDF5; color: #059669; }
+.summaryGreen .summaryLabel { color: #6B7280; }
+.summaryYellow { background: #FFFBEB; color: #D97706; }
+.summaryYellow .summaryLabel { color: #6B7280; }
+.summaryRed { background: #FEF2F2; color: #DC2626; }
+.summaryRed .summaryLabel { color: #6B7280; }
+
+/* Table */
+.tableWrap {
+  overflow-x: auto;
+  border-radius: 14px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  background: #FFFFFF;
+}
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+/* Group headers */
+.groupHeader {
+  padding: 10px 4px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 400;
+  border-bottom: 2px solid #E5E7EB;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.groupMu { background: #EFF6FF; color: #1D4ED8; }
+.groupLp { background: #ECFDF5; color: #059669; }
+.groupComm { background: #FFFBEB; color: #B45309; }
+.groupAnnual { background: #F5F3FF; color: #7C3AED; }
+
+/* Sub headers */
+.subHeader {
+  padding: 6px 3px;
+  text-align: center;
+  font-size: 10px;
+  font-weight: 400;
+  color: #6B7280;
+  border-bottom: 1px solid #E5E7EB;
+  background: #F9FAFB;
+}
+
+/* Name column — sticky */
+.nameHeader {
+  padding: 8px 12px;
+  text-align: left;
+  font-size: 10px;
+  font-weight: 400;
+  color: #6B7280;
+  background: #F9FAFB;
+  border-bottom: 1px solid #E5E7EB;
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  min-width: 180px;
+}
+.nameCell {
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 400;
+  color: #111827;
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  border-right: 2px solid #E5E7EB;
+  border-bottom: 1px solid #F3F4F6;
+  min-width: 180px;
+}
+.pilotNum {
+  color: #9CA3AF;
+  margin-right: 4px;
+}
+.pilotAircraft {
+  font-size: 10px;
+  color: #9CA3AF;
+  margin-top: 1px;
+}
+
+/* Data cells */
+.dataCell {
+  padding: 6px 4px;
+  text-align: center;
+  border-bottom: 1px solid #F3F4F6;
+}
+
+/* Status dots */
+.dot {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+.dotGreen { background: #10B981; }
+.dotYellow { background: #F59E0B; }
+.dotRed { background: #EF4444; }
+.dotGray { background: #D1D5DB; }
+
+/* Loading */
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 0;
+}
+
+/* ── Print ── */
+@media print {
+  .actions { display: none !important; }
+  .container { padding: 8px; max-width: none; }
+  .table { font-size: 9px; }
+  .dot {
+    width: 9px; height: 9px;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .dotGreen { background: #10B981 !important; }
+  .dotYellow { background: #F59E0B !important; }
+  .dotRed { background: #EF4444 !important; }
+  .dotGray { background: #D1D5DB !important; }
+  .nameCell, .nameHeader { position: static; }
+  .tableWrap { overflow: visible; box-shadow: none; border: 1px solid #E5E7EB; }
+  .summaryRow { break-inside: avoid; }
+  .summaryCard { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .summaryTotal { background: #111827 !important; color: #FFFFFF !important; }
+  .summaryTotal .summaryLabel { color: #9CA3AF !important; }
+  .summaryGreen { background: #ECFDF5 !important; color: #059669 !important; }
+  .summaryYellow { background: #FFFBEB !important; color: #D97706 !important; }
+  .summaryRed { background: #FEF2F2 !important; color: #DC2626 !important; }
+  .groupMu { background: #EFF6FF !important; color: #1D4ED8 !important; }
+  .groupLp { background: #ECFDF5 !important; color: #059669 !important; }
+  .groupComm { background: #FFFBEB !important; color: #B45309 !important; }
+  .groupAnnual { background: #F5F3FF !important; color: #7C3AED !important; }
+  .subHeader { background: #F9FAFB !important; }
+  .nameHeader { background: #F9FAFB !important; }
+}

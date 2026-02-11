@@ -1,77 +1,58 @@
-﻿import React, { useContext, useState } from 'react';
+import React, { useContext, useState } from 'react';
 import {
-  SafeAreaView, View, Text, TextInput, TouchableOpacity, Alert, StyleSheet, Platform
+  SafeAreaView, View, Text, TextInput, TouchableOpacity, Alert,
+  StyleSheet, Platform, ActivityIndicator, KeyboardAvoidingView, ScrollView
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { AuthCtx } from './contexts';
-import api from './api';
-
-const FONT = 'NewsCycle-Regular';
-const DARK = '#333';
-
-const ActionButton = ({ title, style, onPress, disabled }) => (
-  <TouchableOpacity onPress={onPress} activeOpacity={0.9} disabled={disabled}
-    style={[styles.btn, style, disabled && { opacity: 0.6 }]}>
-    <Text style={styles.btnText}>{title}</Text>
-  </TouchableOpacity>
-);
+import { Colors, FONT, Shadows, BorderRadius, Spacing } from './theme';
+import { supabase } from './supabase';
 
 export default function ChangePassword({ navigation }) {
   const { auth, setAuth } = useContext(AuthCtx);
-  const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [showCurrent, setShowCurrent] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [focused, setFocused] = useState(null);
 
   const handleChangePassword = async () => {
-    if (!auth?.token) {
-      Alert.alert('Помилка', 'Немає токена сесії. Увійдіть заново.');
+    if (!auth?.email) {
+      Alert.alert('Помилка', 'Сесія не активна. Увійдіть заново.');
       return navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
     }
 
-    if (!currentPassword.trim()) {
-      return Alert.alert('Увага', 'Введіть поточний пароль');
-    }
-
-    if (!newPassword.trim() || !confirmPassword.trim()) {
+    if (!newPassword || !confirmPassword) {
       return Alert.alert('Увага', 'Заповніть всі поля нового пароля');
     }
 
-    if (newPassword.trim().length < 6) {
+    if (newPassword.length < 6) {
       return Alert.alert('Увага', 'Новий пароль має містити мінімум 6 символів');
     }
 
-    if (newPassword.trim() !== confirmPassword.trim()) {
+    if (newPassword !== confirmPassword) {
       return Alert.alert('Увага', 'Нові паролі не збігаються');
     }
 
     try {
       setBusy(true);
-      
-      // Спочатку перевіряємо поточний пароль через логін
-      const loginCheck = await api.login(auth.email, currentPassword.trim());
-      if (!loginCheck?.ok) {
-        throw new Error('Неправильний поточний пароль');
-      }
 
-      // Тепер змінюємо пароль
-      const result = await api.profileUpdate(auth.token, newPassword.trim());
+      const { data: result, error: rpcErr } = await supabase.rpc('fn_change_password', {
+        p_email: auth.email,
+        p_new_password: newPassword,
+      });
+      if (rpcErr) throw new Error(rpcErr.message);
       if (!result?.ok) {
         throw new Error(result?.error || 'Не вдалося змінити пароль');
       }
 
-      // Очищуємо поля
-      setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
 
-      // Продовжуємо локальну сесію ще на тиждень
-      if (auth?.token) {
+      if (auth?.userId) {
         const WEEK = 7 * 24 * 60 * 60 * 1000;
-        const updatedAuth = { ...auth, expires: Date.now() + WEEK };
-        setAuth(updatedAuth);
+        setAuth({ ...auth, expires: Date.now() + WEEK });
       }
 
       Alert.alert('Готово', 'Пароль успішно змінено');
@@ -82,145 +63,172 @@ export default function ChangePassword({ navigation }) {
     }
   };
 
+  const renderPasswordField = (label, value, onChange, placeholder, showFlag, toggleShow, focusKey) => (
+    <>
+      <Text style={styles.label}>{label}</Text>
+      <View style={[styles.inputWrap, focused === focusKey && styles.inputFocused]}>
+        <TextInput
+          value={value}
+          onChangeText={onChange}
+          placeholder={placeholder}
+          placeholderTextColor={Colors.textTertiary}
+          secureTextEntry={!showFlag}
+          autoCapitalize="none"
+          autoCorrect={false}
+          autoComplete="off"
+          textContentType="oneTimeCode"
+          style={styles.input}
+          onFocus={() => setFocused(focusKey)}
+          onBlur={() => setFocused(null)}
+        />
+        <TouchableOpacity
+          onPress={toggleShow}
+          style={styles.eyeBtn}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.eyeText}>{showFlag ? '🙈' : '👁️'}</Text>
+        </TouchableOpacity>
+      </View>
+    </>
+  );
+
   return (
     <SafeAreaView style={styles.safe}>
-      <View style={styles.container}>
-        <Text style={styles.title}>Зміна пароля</Text>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView
+          contentContainerStyle={styles.container}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <Text style={styles.title}>Зміна пароля</Text>
+          <Text style={styles.subtitle}>Введіть новий пароль</Text>
 
-        <Text style={styles.label}>Поточний пароль</Text>
-        <View style={{ position: 'relative' }}>
-          <TextInput
-            value={currentPassword}
-            onChangeText={setCurrentPassword}
-            placeholder="Введіть поточний пароль"
-            placeholderTextColor="#9AA0A6"
-            secureTextEntry={!showCurrent}
-            style={[styles.input, { paddingRight: 42 }]}
-          />
-          <TouchableOpacity
-            onPress={() => setShowCurrent(s => !s)}
-            style={styles.eyeBtn}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.eyeText}>{showCurrent ? '🙈' : '👁️'}</Text>
-          </TouchableOpacity>
-        </View>
+          {renderPasswordField(
+            'Новий пароль', newPassword, setNewPassword,
+            'Мінімум 6 символів', showNew,
+            () => setShowNew(s => !s), 'new'
+          )}
+          {renderPasswordField(
+            'Підтвердження', confirmPassword, setConfirmPassword,
+            'Повторіть новий пароль', showConfirm,
+            () => setShowConfirm(s => !s), 'confirm'
+          )}
 
-        <Text style={styles.label}>Новий пароль</Text>
-        <View style={{ position: 'relative' }}>
-          <TextInput
-            value={newPassword}
-            onChangeText={setNewPassword}
-            placeholder="Мінімум 6 символів"
-            placeholderTextColor="#9AA0A6"
-            secureTextEntry={!showNew}
-            style={[styles.input, { paddingRight: 42 }]}
-          />
-          <TouchableOpacity
-            onPress={() => setShowNew(s => !s)}
-            style={styles.eyeBtn}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.eyeText}>{showNew ? '🙈' : '👁️'}</Text>
-          </TouchableOpacity>
-        </View>
+          <View style={styles.btnWrap}>
+            <TouchableOpacity
+              style={[styles.btn, busy && { opacity: 0.6 }]}
+              onPress={handleChangePassword}
+              activeOpacity={0.7}
+              disabled={busy}
+            >
+              {busy
+                ? <ActivityIndicator color="#555860" />
+                : <>
+                    <Ionicons name="checkmark-circle-outline" size={18} color="#555860" style={styles.btnIcon} />
+                    <Text style={styles.btnText}>Змінити пароль</Text>
+                  </>
+              }
+            </TouchableOpacity>
 
-        <Text style={styles.label}>Підтвердження нового пароля</Text>
-        <View style={{ position: 'relative' }}>
-          <TextInput
-            value={confirmPassword}
-            onChangeText={setConfirmPassword}
-            placeholder="Повторіть новий пароль"
-            placeholderTextColor="#9AA0A6"
-            secureTextEntry={!showConfirm}
-            style={[styles.input, { paddingRight: 42 }]}
-          />
-          <TouchableOpacity
-            onPress={() => setShowConfirm(s => !s)}
-            style={styles.eyeBtn}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.eyeText}>{showConfirm ? '🙈' : '👁️'}</Text>
-          </TouchableOpacity>
-        </View>
-
-        <ActionButton
-          title={busy ? 'ЗБЕРЕЖЕННЯ...' : 'ЗМІНИТИ ПАРОЛЬ'}
-          onPress={handleChangePassword}
-          disabled={busy}
-          style={{ marginTop: 20 }}
-        />
-
-        <ActionButton
-          title="НАЗАД"
-          onPress={() => navigation.goBack()}
-          style={{ backgroundColor: '#7B7B7B', marginTop: 10 }}
-        />
-      </View>
+            <TouchableOpacity
+              style={styles.btn}
+              onPress={() => navigation.goBack()}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="arrow-back-outline" size={18} color="#555860" style={styles.btnIcon} />
+              <Text style={styles.btnText}>Назад</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#F4F6F8' },
-  container: { 
-    flex: 1,
-    paddingHorizontal: 16, 
-    paddingTop: Platform.OS === 'android' ? 8 : 6 
+  safe: { flex: 1, backgroundColor: Colors.bgTertiary },
+  container: {
+    flexGrow: 1,
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Platform.OS === 'android' ? 12 : 10,
+    paddingBottom: 40,
   },
-  title: { 
-    fontFamily: FONT, 
-    fontSize: 28, 
-    fontWeight: '800', 
-    color: '#111827', 
-    marginBottom: 18,
-    textAlign: 'center'
+  title: {
+    fontFamily: FONT,
+    fontSize: 26,
+    fontWeight: '400',
+    color: Colors.textPrimary,
+    textAlign: 'center',
   },
-  label: { 
-    fontFamily: FONT, 
-    fontSize: 15, 
-    color: '#111827', 
-    marginTop: 15, 
+  subtitle: {
+    fontFamily: FONT,
+    fontSize: 14,
+    fontWeight: '400',
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    marginTop: 4,
+    marginBottom: 20,
+  },
+  label: {
+    fontFamily: FONT,
+    fontSize: 14,
+    fontWeight: '400',
+    color: Colors.textSecondary,
     marginBottom: 6,
-    fontWeight: '600'
+    marginTop: 14,
+  },
+  inputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.bgSecondary,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  inputFocused: {
+    borderColor: Colors.primary,
   },
   input: {
-    fontFamily: FONT, 
-    fontSize: 16, 
-    color: '#111',
-    backgroundColor: '#fff', 
-    borderRadius: 12, 
-    paddingHorizontal: 14, 
-    paddingVertical: 12,
-    borderWidth: 1, 
-    borderColor: '#E1E5EA'
+    flex: 1,
+    fontFamily: FONT,
+    fontSize: 16,
+    fontWeight: '400',
+    color: Colors.textPrimary,
+    paddingHorizontal: 14,
+    paddingVertical: Platform.OS === 'ios' ? 14 : 12,
   },
-  eyeBtn: { 
-    position: 'absolute', 
-    right: 10, 
-    top: 0, 
-    bottom: 0, 
-    justifyContent: 'center', 
-    paddingHorizontal: 6 
+  eyeBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
   },
   eyeText: { fontSize: 18 },
-
-  btn: {
-    backgroundColor: DARK,
-    borderRadius: 14,
-    paddingVertical: 14,
+  btnWrap: {
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.18,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 3,
+    gap: 16,
+    marginTop: 24,
+  },
+  btn: {
+    width: '80%',
+    height: 50,
+    borderRadius: BorderRadius.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#D9DBDE',
+    borderWidth: 1,
+    borderColor: '#B0B3B8',
+    ...Shadows.medium,
+  },
+  btnIcon: {
+    marginRight: 10,
   },
   btnText: {
-    color: '#fff',
+    color: '#555860',
     fontFamily: FONT,
-    fontSize: 18,
-    fontWeight: '800',
-    letterSpacing: 0.3,
+    fontSize: 16,
+    fontWeight: '400',
   },
 });

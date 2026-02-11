@@ -1,0 +1,55 @@
+.header {
+  background: #FFFFFF;
+  padding: 6px 12px;
+  border-bottom: 1px solid #E5E7EB;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.tabRow {
+  display: flex;
+  align-items: center;
+  background: #F3F4F6;
+  border-radius: 10px;
+  padding: 3px;
+  max-width: 480px;
+  margin: 0 auto;
+}
+.tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 7px 0;
+  border-radius: 8px;
+  cursor: pointer;
+  border: none;
+  background: none;
+  color: #9CA3AF;
+  font-size: 13px;
+  font-weight: 400;
+  transition: all 0.15s;
+}
+.tabActive {
+  background: #FFFFFF;
+  color: #111827;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+.tabIcon {
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+}
+.badgeCircle {
+  width: 20px;
+  height: 20px;
+  border-radius: 10px;
+  background: #EF4444;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #FFFFFF;
+  font-size: 10px;
+  font-weight: 400;
+}

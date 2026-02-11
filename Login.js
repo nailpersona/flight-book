@@ -6,7 +6,7 @@ import {
 } from 'react-native';
 import { AuthCtx } from './contexts';
 import { Colors, FONT, Shadows, BorderRadius, Spacing } from './theme';
-import api from './api';
+import { supabase } from './supabase';
 
 export default function Login({ navigation }) {
   const { setAuth } = useContext(AuthCtx);
@@ -22,12 +22,16 @@ export default function Login({ navigation }) {
     }
     try {
       setBusy(true);
-      const j = await api.login(email.trim(), pass.trim());
+      const { data: j, error: rpcErr } = await supabase.rpc('fn_login', {
+        p_email: email.trim(),
+        p_password: pass.trim(),
+      });
+      if (rpcErr) throw new Error(rpcErr.message);
       if (!j?.ok) throw new Error(j?.error || 'Помилка входу');
 
       const WEEK = 7 * 24 * 60 * 60 * 1000;
       const authObj = {
-        token: j.token,
+        userId: j.id,
         role: j.role || 'user',
         pib: j.pib || '',
         email: j.email || email.trim(),

@@ -4,8 +4,9 @@ import {
   ScrollView, ActivityIndicator, Modal, FlatList
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import CustomCalendar from './components/CustomCalendar';
 import { AuthCtx } from './contexts';
-import { getBreaksDataFromSupabase, getAllPilotsFromSupabase } from './supabaseData';
+import { getBreaksDataFromSupabase, getAllPilotsFromSupabase, updateLpBreakDateInSupabase } from './supabaseData';
 import { Colors, Shadows, BorderRadius, Spacing, FONT } from './theme';
 
 // Soft status colors — muted pastel tones
@@ -65,6 +66,12 @@ export default function BreaksLP({ route, navigation }) {
   const [pilots, setPilots] = useState([]);
   const [showPilotSelector, setShowPilotSelector] = useState(false);
 
+  // Date editing
+  const [editingLpType, setEditingLpType] = useState(null);
+  const [editingAircraftTypeId, setEditingAircraftTypeId] = useState(null);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(new Date());
+
   useEffect(() => {
     if (!isAdmin) return;
     (async () => {
@@ -94,8 +101,45 @@ export default function BreaksLP({ route, navigation }) {
 
   const cleanName = (n) => n.replace(/^.*?\d{4}\s*\d{2}:\d{2}:\d{2}.*?\)\s*/, '').trim();
   const currentIsAdmin = isAdmin || (auth?.role === 'admin');
-  const lpData = data.lp || {};
-  const lpTypes = data.lpTypes || Object.keys(lpData);
+  const lpSections = data.lpSections || [];
+
+  // Date editing handlers
+  const handleEditDate = (normalized, aircraftTypeId, currentDate) => {
+    setEditingLpType(normalized);
+    setEditingAircraftTypeId(aircraftTypeId);
+    if (currentDate && currentDate.trim()) {
+      try {
+        const parts = currentDate.split('.');
+        if (parts.length === 3) {
+          setSelectedDate(new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0])));
+        } else { setSelectedDate(new Date()); }
+      } catch (_) { setSelectedDate(new Date()); }
+    } else { setSelectedDate(new Date()); }
+    setShowDatePicker(true);
+  };
+
+  const onCalendarSelect = async (date) => {
+    if (!date || !editingLpType) return;
+    const day = date.getDate().toString().padStart(2, '0');
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const year = date.getFullYear();
+    const formatted = `${day}.${month}.${year}`;
+    setShowDatePicker(false);
+    const lpType = editingLpType;
+    const acTypeId = editingAircraftTypeId;
+    setEditingLpType(null);
+    setEditingAircraftTypeId(null);
+    try {
+      const result = await updateLpBreakDateInSupabase(selectedPilot, lpType, acTypeId, formatted);
+      if (result?.ok) {
+        loadData();
+      } else {
+        Alert.alert('Помилка', result?.error || 'Не вдалося оновити дату');
+      }
+    } catch (_) {
+      Alert.alert('Помилка', 'Не вдалося оновити дату');
+    }
+  };
 
   if (loading) {
     return (
@@ -142,50 +186,95 @@ export default function BreaksLP({ route, navigation }) {
       {/* Column headers */}
       <View style={styles.columnHeaders}>
         <Text style={styles.colHeaderLeft}>Тип ПС</Text>
-        <Text style={styles.colHeaderCenter}>Останнiй полiт</Text>
+        <Text style={styles.colHeaderCenter}>Крайнiй полiт</Text>
         <Text style={styles.colHeaderRight}>Дiйсний до</Text>
+        <View style={{ width: 28 }} />
       </View>
 
       <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
-        {lpTypes.map((lpType) => {
-          const items = lpData[lpType] || [];
+        {lpSections.map((section, idx) => {
+          // КЛПВ header separator
+          if (section.type === 'klpv_header') {
+            return (
+              <View key={`s-${idx}`} style={styles.klpvHeaderContainer}>
+                <View style={styles.klpvHeaderLine} />
+                <Text style={styles.klpvHeaderText}>Згідно КЛПВ</Text>
+                <View style={styles.klpvHeaderLine} />
+              </View>
+            );
+          }
+
+          const items = section.items || [];
+
           return (
-            <View key={lpType} style={styles.section}>
+            <View key={`s-${idx}`} style={styles.section}>
               {/* Section title */}
               <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>{lpType}</Text>
+                <Text style={styles.sectionTitle}>{section.name}</Text>
               </View>
 
               {/* Items */}
-              {items.length > 0 ? items.map((item, idx) => {
+              {items.length > 0 ? items.map((item, i) => {
                 const s = getStatus(item.color);
+                const isLast = i === items.length - 1;
+                const hasKlpv = !!item.klpvExpiryDate;
                 return (
-                  <View
-                    key={idx}
-                    style={[styles.row, idx === items.length - 1 && styles.rowLast]}
-                  >
-                    {/* Status dot + aircraft */}
-                    <View style={styles.rowLeft}>
-                      <View style={[styles.dot, { backgroundColor: s.dot }]} />
-                      <Text style={styles.aircraftText}>
-                        {item.aircraft || '—'}
-                      </Text>
-                    </View>
+                  <React.Fragment key={i}>
+                    <View
+                      style={[styles.row, isLast && !hasKlpv && styles.rowLast]}
+                    >
+                      {/* Status dot + aircraft */}
+                      <View style={styles.rowLeft}>
+                        <View style={[styles.dot, { backgroundColor: s.dot }]} />
+                        <Text style={styles.aircraftText}>
+                          {item.aircraft || '—'}
+                        </Text>
+                      </View>
 
-                    {/* Dates */}
-                    <View style={styles.rowRight}>
-                      <View style={[styles.dateBox, { backgroundColor: s.bg }]}>
-                        <Text style={[styles.dateText, { color: s.text }]}>
-                          {item.date || '—'}
-                        </Text>
-                      </View>
-                      <View style={[styles.dateBox, { backgroundColor: s.bg }]}>
-                        <Text style={[styles.dateText, { color: s.text }]}>
-                          {item.expiryDate || '—'}
-                        </Text>
+                      {/* Dates + edit */}
+                      <View style={styles.rowRight}>
+                        <TouchableOpacity
+                          style={[styles.dateBox, { backgroundColor: s.bg }]}
+                          onPress={() => handleEditDate(section.normalized, item.aircraftTypeId, item.date)}
+                        >
+                          <Text style={[styles.dateText, { color: s.text }]}>
+                            {item.date || '—'}
+                          </Text>
+                        </TouchableOpacity>
+                        <View style={[styles.dateBox, { backgroundColor: s.bg }]}>
+                          <Text style={[styles.dateText, { color: s.text }]}>
+                            {item.expiryDate || '—'}
+                          </Text>
+                        </View>
+                        <TouchableOpacity
+                          style={styles.editBtn}
+                          onPress={() => handleEditDate(section.normalized, item.aircraftTypeId, item.date)}
+                        >
+                          <Ionicons name="create-outline" size={15} color={Colors.textTertiary} />
+                        </TouchableOpacity>
                       </View>
                     </View>
-                  </View>
+                    {/* КЛПВ sub-row */}
+                    {hasKlpv && (() => {
+                      const ks = getStatus(item.klpvColor);
+                      return (
+                        <View style={[styles.klpvRow, isLast && styles.rowLast]}>
+                          <View style={styles.rowLeft} />
+                          <View style={styles.rowRight}>
+                            <View style={styles.klpvLabelBox}>
+                              <Text style={styles.klpvLabel}>КЛПВ</Text>
+                            </View>
+                            <View style={[styles.dateBox, { backgroundColor: ks.bg }]}>
+                              <Text style={[styles.dateText, { color: ks.text }]}>
+                                {item.klpvExpiryDate}
+                              </Text>
+                            </View>
+                            <View style={{ width: 28 }} />
+                          </View>
+                        </View>
+                      );
+                    })()}
+                  </React.Fragment>
                 );
               }) : (
                 <View style={styles.emptyRow}>
@@ -204,6 +293,14 @@ export default function BreaksLP({ route, navigation }) {
         onSelect={(p) => { setSelectedPilot(p); setShowPilotSelector(false); }}
         visible={showPilotSelector}
         onClose={() => setShowPilotSelector(false)}
+      />
+
+      {/* Date calendar */}
+      <CustomCalendar
+        visible={showDatePicker}
+        value={selectedDate}
+        onSelect={onCalendarSelect}
+        onClose={() => { setShowDatePicker(false); setEditingLpType(null); setEditingAircraftTypeId(null); }}
       />
     </SafeAreaView>
   );
@@ -311,6 +408,8 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: Spacing.md,
     paddingVertical: 8,
     backgroundColor: Colors.bgTertiary,
@@ -323,6 +422,15 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     color: Colors.textPrimary,
     letterSpacing: 0.5,
+  },
+
+  // Edit button
+  editBtn: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 6,
   },
 
   // Row — one aircraft
@@ -372,6 +480,50 @@ const styles = StyleSheet.create({
     fontFamily: FONT,
     fontSize: 13,
     fontWeight: '400',
+  },
+
+  // КЛПВ sub-row (under matching KBP item)
+  klpvRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.borderLight,
+  },
+  klpvLabelBox: {
+    width: 100,
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+  },
+  klpvLabel: {
+    fontFamily: FONT,
+    fontSize: 11,
+    fontWeight: '400',
+    color: Colors.textTertiary,
+    fontStyle: 'italic',
+  },
+
+  // КЛПВ header separator
+  klpvHeaderContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: Spacing.lg,
+    marginTop: Spacing.md,
+    marginBottom: Spacing.sm,
+    gap: 10,
+  },
+  klpvHeaderLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: Colors.borderLight,
+  },
+  klpvHeaderText: {
+    fontFamily: FONT,
+    fontSize: 13,
+    fontWeight: '400',
+    color: Colors.textTertiary,
   },
 
   // Empty

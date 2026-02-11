@@ -55,7 +55,7 @@ export default function App() {
         if (raw) {
           try {
             const parsed = JSON.parse(raw);
-            if (parsed?.token) {
+            if (parsed?.userId) {
               const now = Date.now();
               // якщо немає expires — вважаємо валідним (задля сумісності),
               // якщо є — має бути > now
@@ -77,7 +77,7 @@ export default function App() {
   // зберігати auth у сховище при зміні
   useEffect(() => {
     (async () => {
-      if (auth?.token) {
+      if (auth?.userId) {
         await AsyncStorage.setItem('auth', JSON.stringify(auth));
       } else {
         await AsyncStorage.removeItem('auth');
@@ -115,7 +115,7 @@ export default function App() {
           backgroundColor={Colors.primary}
         />
         <Stack.Navigator
-          initialRouteName={auth?.token ? 'Tabs' : 'Login'}
+          initialRouteName={auth?.userId ? 'Tabs' : 'Login'}
           screenOptions={{
             headerShown: false,
             contentStyle: {

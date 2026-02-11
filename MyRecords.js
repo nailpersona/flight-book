@@ -6,14 +6,14 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { AuthCtx } from './contexts';
-import api from './api';
+import { supabase } from './supabase';
 import { Colors, Shadows, BorderRadius, Spacing, FONT } from './theme';
 import { TabNavigationContext } from './FixedTabNavigator';
 
-/** Дата → DD.MM.YYYY */
-function parseDateToDDMMYYYY(v) {
+/** Дата ISO → DD.MM.YYYY */
+function formatDate(v) {
   if (!v) return '';
-  const d = v instanceof Date ? v : new Date(v);
+  const d = new Date(v);
   if (isNaN(d.getTime())) return String(v);
   const dd = String(d.getDate()).padStart(2, '0');
   const mm = String(d.getMonth() + 1).padStart(2, '0');
@@ -21,47 +21,18 @@ function parseDateToDDMMYYYY(v) {
   return `${dd}.${mm}.${yy}`;
 }
 
-/** "01.09.2025" -> 20250901 */
-function dmyToNum(s) {
-  const m = String(s || '').match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
-  if (!m) return 0;
-  return Number(m[3] + m[2] + m[1]);
-}
-
-/** Витягнути тільки час HH:MM:SS */
-function onlyTimeHHMMSS(v) {
-  if (v == null) return '';
-  const maybeDate = v instanceof Date ? v : new Date(v);
-  if (!isNaN(maybeDate.getTime())) {
-    const hh = String(maybeDate.getHours()).padStart(2, '0');
-    const mm = String(maybeDate.getMinutes()).padStart(2, '0');
-    const ss = String(maybeDate.getSeconds()).padStart(2, '0');
-    return `${hh}:${mm}:${ss}`;
-  }
+/** interval string "01:30:00" → "01:30" */
+function formatFlightTime(v) {
+  if (!v) return '';
   const s = String(v).trim();
-  const iso = s.match(/T(\d{2}):(\d{2}):(\d{2})/);
-  if (iso) return `${iso[1]}:${iso[2]}:${iso[3]}`;
   const m = s.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
-  if (m) {
-    const hh = String(+m[1]).padStart(2, '0');
-    const mm = String(+m[2]).padStart(2, '0');
-    const ss = String(m[3] ? +m[3] : 0).padStart(2, '0');
-    return `${hh}:${mm}:${ss}`;
-  }
-  const s2 = s.replace(',', '.');
-  const mHM = s2.match(/^(\d+)\.(\d{1,2})$/);
-  if (mHM) {
-    let hh = +mHM[1], mm = +mHM[2];
-    hh += Math.floor(mm / 60); mm = mm % 60;
-    return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:00`;
-  }
-  if (/^\d+$/.test(s2)) return `${String(+s2).padStart(2, '0')}:00:00`;
+  if (m) return `${String(+m[1]).padStart(2, '0')}:${m[2]}`;
   return s;
 }
 
 /** Рядок деталі */
 function DetailRow({ icon, label, value }) {
-  if (!value || value === '-' || value === '0' || value === '00:00:00') return null;
+  if (!value || value === '-' || value === '0' || value === '00:00') return null;
   return (
     <View style={s.detailRow}>
       <Ionicons name={icon} size={14} color={Colors.textTertiary} />
@@ -80,29 +51,43 @@ export default function MyRecords({ navigation }) {
 
   const load = useCallback(async () => {
     try {
-      if (!auth?.token) return;
+      if (!auth?.pib) return;
       setLoading(true);
-      const r = await api.rows(auth.token);
-      if (!r?.ok) throw new Error(r?.error || 'Не вдалося завантажити записи');
 
-      const sorted = [...(r.items || [])].sort((a, b) => {
-        const aD = a['Дата'], bD = b['Дата'];
-        const aNum = dmyToNum(aD);
-        const bNum = dmyToNum(bD);
-        if (aNum && bNum) return bNum - aNum;
-        const da = new Date(aD).getTime() || 0;
-        const db = new Date(bD).getTime() || 0;
-        return db - da;
-      });
+      // Знайти user_id
+      const { data: userData, error: userErr } = await supabase
+        .from('users').select('id').eq('name', auth.pib).single();
+      if (userErr || !userData) throw new Error('Користувача не знайдено');
 
-      setItems(sorted);
-      setIsAdmin(r.role === 'admin');
+      const admin = auth?.role === 'admin';
+      setIsAdmin(admin);
+
+      // Завантажити польоти з Supabase
+      let query = supabase
+        .from('flights')
+        .select(`
+          id, date, aircraft_type_id, time_of_day, weather_conditions,
+          flight_type, test_flight_topic, document_source, flight_time,
+          combat_applications, flight_purpose, notes, flights_count,
+          aircraft_types(name),
+          fuel_records(airfield, fuel_amount),
+          users!flights_user_id_fkey(name)
+        `)
+        .order('date', { ascending: false });
+
+      if (!admin) {
+        query = query.eq('user_id', userData.id);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      setItems(data || []);
     } catch (e) {
       Alert.alert('Помилка', String(e.message || e));
     } finally {
       setLoading(false);
     }
-  }, [auth?.token]);
+  }, [auth?.pib, auth?.role]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
   useEffect(() => { load(); }, []);
@@ -115,10 +100,13 @@ export default function MyRecords({ navigation }) {
         style: 'destructive',
         onPress: async () => {
           try {
-            if (!auth?.token) throw new Error('Немає токена');
-            if (!it?._row) throw new Error('Немає індексу рядка');
-            const r = await api.deleteRow(auth.token, it._row);
-            if (!r?.ok) throw new Error(r?.error || 'Не вдалося видалити');
+            // Видалити пов'язані записи
+            await supabase.from('flight_exercises').delete().eq('flight_id', it.id);
+            await supabase.from('fuel_records').delete().eq('flight_id', it.id);
+            await supabase.from('flight_updates_log').delete().eq('flight_id', it.id);
+            // Видалити сам політ
+            const { error } = await supabase.from('flights').delete().eq('id', it.id);
+            if (error) throw error;
             await load();
           } catch (e) {
             Alert.alert('Помилка', String(e.message || e));
@@ -129,26 +117,28 @@ export default function MyRecords({ navigation }) {
   };
 
   const onEdit = (it) => {
-    tabNavigate('Main', undefined, { edit: { row: it._row, data: it } });
+    tabNavigate('Main', undefined, { edit: { id: it.id, data: it } });
   };
 
   const renderItem = ({ item }) => {
-    const date = parseDateToDDMMYYYY(item['Дата']);
-    const typePs = String(item['Тип ПС'] || '').trim();
-    const pib = isAdmin ? String(item['ПІБ'] || '').trim() : '';
-    const nalitFull = onlyTimeHHMMSS(item['Наліт']);
-    const nalit = nalitFull ? nalitFull.replace(/:(\d{2})$/, '') : '';
-    const pol = String(item['Польотів'] || '').trim();
-    const bz = String(item['Бойових заст.'] || '').trim();
-    const chas = String(item['Час доби МУ'] || '').trim();
-    const vid = String(item['Вид пол.'] || item['Вид польоту'] || '').trim();
-    const notes = String(item['Примітки'] || '').trim();
-    const docSource = String(item['Згідно чого'] || item['document_source'] || '').trim();
-    const flightPurpose = String(item['Мета польоту'] || item['flight_purpose'] || '').trim();
-    const testTopic = String(item['Тема випробування'] || item['test_flight_topic'] || '').trim();
-    const fuelAirfield = String(item['Аеродром палива'] || item['fuel_airfield'] || '').trim();
-    const fuelAmount = String(item['Паливо'] || item['fuel_amount'] || '').trim();
-    const fuelText = fuelAirfield && fuelAmount ? `${fuelAirfield} — ${fuelAmount} кг` : fuelAmount ? `${fuelAmount} кг` : '';
+    const date = formatDate(item.date);
+    const typePs = item.aircraft_types?.name || '';
+    const pib = isAdmin ? (item.users?.name || '') : '';
+    const nalit = formatFlightTime(item.flight_time);
+    const pol = String(item.flights_count || '');
+    const bz = String(item.combat_applications || '');
+    const chas = (item.time_of_day || '') + (item.weather_conditions || '');
+    const vid = item.flight_type || '';
+    const notes = item.notes || '';
+    const docSource = item.document_source || '';
+    const flightPurpose = item.flight_purpose || '';
+    const testTopic = item.test_flight_topic || '';
+    const fuel = item.fuel_records?.[0];
+    const fuelText = fuel
+      ? (fuel.airfield && fuel.fuel_amount
+          ? `${fuel.airfield} — ${fuel.fuel_amount} кг`
+          : fuel.fuel_amount ? `${fuel.fuel_amount} кг` : '')
+      : '';
 
     return (
       <View style={s.card}>
@@ -222,7 +212,7 @@ export default function MyRecords({ navigation }) {
 
       <FlatList
         data={items}
-        keyExtractor={(it, idx) => String(it._row || idx)}
+        keyExtractor={(it) => it.id}
         renderItem={renderItem}
         contentContainerStyle={s.list}
         refreshControl={

@@ -284,94 +284,140 @@ function FuelPopup({ fuel, onSave }) {
 // ─── Модальне вікно зворотного зв'язку після польоту ───
 
 function FlightFeedbackModal({ visible, data, onClose }) {
-  const [correcting, setCorrecting] = useState(false);
+  const [lpTypes, setLpTypes] = useState([]);
   const [checkedLp, setCheckedLp] = useState({});
+  const [aiSuggested, setAiSuggested] = useState(new Set());
   const [saving, setSaving] = useState(false);
-
-  // All possible LP types for correction checklist
-  const [allLpTypes, setAllLpTypes] = useState([]);
+  const [loadingLp, setLoadingLp] = useState(true);
 
   useEffect(() => {
-    if (visible && data) {
-      // Initialize checked state from detected LP types
-      const init = {};
-      (data.detectedLp || []).forEach(lp => { init[lp] = true; });
-      setCheckedLp(init);
-      setCorrecting(false);
-
-      // Load available LP types
-      (async () => {
-        const { data: types } = await supabase
-          .from('break_periods_lp')
-          .select('lp_type')
-          .order('lp_type');
-        if (types) {
-          const unique = [...new Set(types.map(t => t.lp_type))];
-          setAllLpTypes(unique);
-        }
-      })();
+    if (!visible || !data) return;
+    const kbpDocs = ['КБП ВА', 'КБП БА/РА', 'КБПВ'];
+    if (data.docSource && kbpDocs.includes(data.docSource)) {
+      loadLpData();
+    } else {
+      setLoadingLp(false);
+      setLpTypes([]);
+      setCheckedLp({});
+      setAiSuggested(new Set());
     }
   }, [visible, data]);
 
-  const handleConfirm = async () => {
-    // Mark as confirmed
-    if (data?.logId) {
-      await supabase
-        .from('flight_updates_log')
-        .update({ confirmed: true })
-        .eq('id', data.logId);
+  const loadLpData = async () => {
+    setLoadingLp(true);
+    try {
+      // Get pilot's military class
+      const { data: user } = await supabase
+        .from('users')
+        .select('military_class')
+        .eq('id', data.userId)
+        .single();
+      const milClass = user?.military_class || 2;
+
+      // Load all LP types for this KBP
+      const { data: bpData } = await supabase
+        .from('break_periods_lp')
+        .select('lp_type, lp_type_normalized')
+        .eq('kbp_document', data.docSource)
+        .eq('military_class', milClass)
+        .order('lp_type_normalized');
+
+      const seen = new Set();
+      const types = [];
+      (bpData || []).forEach(t => {
+        if (!seen.has(t.lp_type_normalized)) {
+          seen.add(t.lp_type_normalized);
+          types.push({ normalized: t.lp_type_normalized, display: t.lp_type });
+        }
+      });
+      setLpTypes(types);
+
+      // AI suggestions from exercises.lp_types + exercise_lp_votes
+      const aiChecked = {};
+      const exerciseIds = data.exerciseIds || [];
+      if (exerciseIds.length > 0) {
+        const { data: exData } = await supabase
+          .from('exercises')
+          .select('lp_types')
+          .in('id', exerciseIds);
+        (exData || []).forEach(ex => {
+          (ex.lp_types || []).forEach(lp => { aiChecked[lp] = true; });
+        });
+
+        const { data: votes } = await supabase
+          .from('exercise_lp_votes')
+          .select('lp_type_normalized')
+          .in('exercise_id', exerciseIds);
+        (votes || []).forEach(v => { aiChecked[v.lp_type_normalized] = true; });
+      }
+
+      setAiSuggested(new Set(Object.keys(aiChecked)));
+      setCheckedLp({ ...aiChecked });
+    } catch (err) {
+      console.warn('Error loading LP data:', err);
+      setLpTypes([]);
+    } finally {
+      setLoadingLp(false);
     }
-    onClose();
   };
 
-  const handleCorrection = async () => {
-    if (!data) return;
+  const handleSave = async () => {
     setSaving(true);
     try {
-      const correctedLp = Object.entries(checkedLp)
+      const selectedLp = Object.entries(checkedLp)
         .filter(([, v]) => v)
         .map(([k]) => k);
 
-      // Update log with correction
+      const isControl = data.isControl || false;
+
+      // Update lp_break_dates via RPC
+      for (const lp of selectedLp) {
+        await supabase.rpc('upsert_lp_break', {
+          p_user_id: data.userId,
+          p_lp_type: lp,
+          p_aircraft_type_id: data.aircraftTypeId,
+          p_date: data.flightDate,
+          p_is_control: isControl,
+        });
+      }
+
+      // AI learning: vote for single-exercise flights
+      if ((data.exerciseIds || []).length === 1) {
+        for (const lp of selectedLp) {
+          await supabase.rpc('vote_exercise_lp', {
+            p_exercise_id: data.exerciseIds[0],
+            p_lp_type: lp,
+          });
+        }
+      }
+
+      // Store AI lesson for multi-exercise flights (if pilot changed something)
+      if ((data.exerciseIds || []).length > 1 && selectedLp.length > 0) {
+        const aiArr = [...aiSuggested];
+        const added = selectedLp.filter(lp => !aiSuggested.has(lp));
+        const removed = aiArr.filter(lp => !checkedLp[lp]);
+
+        if (added.length > 0 || removed.length > 0) {
+          await supabase.from('ai_lessons').insert({
+            lesson_text: `Льотчик обрав ЛП: [${selectedLp.join(', ')}]. AI: [${aiArr.join(', ')}]. +[${added.join(', ')}] -[${removed.join(', ')}].`,
+            context: JSON.stringify({
+              flight_id: data.flightId,
+              exercise_ids: data.exerciseIds,
+              selected_lp: selectedLp,
+              ai_suggested: aiArr,
+            }),
+            source: 'pilot_lp_feedback',
+            user_id: data.userId,
+          });
+        }
+      }
+
+      // Update flight_updates_log
       if (data.logId) {
         await supabase
           .from('flight_updates_log')
-          .update({
-            confirmed: false,
-            corrected_lp: correctedLp,
-          })
+          .update({ detected_lp: selectedLp, confirmed: true })
           .eq('id', data.logId);
-      }
-
-      // Store as AI lesson
-      const detectedStr = (data.detectedLp || []).join(', ') || 'нічого';
-      const correctedStr = correctedLp.join(', ') || 'нічого';
-      const lessonText = `Автовизначення видів ЛП було: [${detectedStr}]. Льотчик виправив на: [${correctedStr}].`;
-
-      await supabase.from('ai_lessons').insert({
-        lesson_text: lessonText,
-        context: JSON.stringify({
-          flight_id: data.flightId,
-          detected_lp: data.detectedLp,
-          corrected_lp: correctedLp,
-          detected_mu: data.detectedMu,
-          exercise_ids: data.exerciseIds || [],
-        }),
-        source: 'pilot_feedback',
-        user_id: data.userId,
-      });
-
-      // Update lp_break_dates: remove unchecked, add newly checked
-      const removed = (data.detectedLp || []).filter(lp => !checkedLp[lp]);
-      const added = correctedLp.filter(lp => !(data.detectedLp || []).includes(lp));
-
-      // Note: we don't remove from lp_break_dates (might have older valid dates)
-      // Just add new ones the pilot indicated
-      for (const lp of added) {
-        const flightDate = new Date().toISOString().split('T')[0];
-        await supabase.from('lp_break_dates')
-          .upsert({ user_id: data.userId, lp_type: lp, last_date: flightDate },
-            { onConflict: 'user_id,lp_type' });
       }
 
       onClose();
@@ -385,105 +431,83 @@ function FlightFeedbackModal({ visible, data, onClose }) {
   if (!data) return null;
 
   const muList = data.detectedMu || [];
-  const lpList = data.detectedLp || [];
+  const hasLpTypes = lpTypes.length > 0;
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={s.modalBackdrop}>
-        <View style={[s.modalCard, { maxHeight: '80%' }]}>
-          {!correcting ? (
+        <View style={[s.modalCard, { maxHeight: '85%' }]}>
+          {/* Header */}
+          <View style={{ alignItems: 'center', marginBottom: Spacing.md }}>
+            <Ionicons name="checkmark-circle-outline" size={40} color={Colors.primary} />
+            <Text style={[s.modalTitle, { marginTop: Spacing.sm }]}>Запис додано</Text>
+          </View>
+
+          {/* MU info */}
+          {muList.length > 0 && (
+            <View style={s.feedbackSection}>
+              <Text style={s.feedbackSectionTitle}>МУ подовжено:</Text>
+              <Text style={s.feedbackItems}>{muList.join(', ')}</Text>
+            </View>
+          )}
+
+          {/* LP checkboxes */}
+          {loadingLp ? (
+            <ActivityIndicator size="small" color={Colors.primary} style={{ marginVertical: Spacing.md }} />
+          ) : hasLpTypes ? (
             <>
-              <View style={{ alignItems: 'center', marginBottom: Spacing.md }}>
-                <Ionicons name="checkmark-circle-outline" size={40} color={Colors.primary} />
-                <Text style={[s.modalTitle, { marginTop: Spacing.sm }]}>Запис додано</Text>
-              </View>
-
-              <Text style={s.feedbackLabel}>Ви подовжили перерви:</Text>
-
-              {muList.length > 0 && (
-                <View style={s.feedbackSection}>
-                  <Text style={s.feedbackSectionTitle}>МУ:</Text>
-                  <Text style={s.feedbackItems}>{muList.join(', ')}</Text>
-                </View>
-              )}
-
-              {lpList.length > 0 && (
-                <View style={s.feedbackSection}>
-                  <Text style={s.feedbackSectionTitle}>Види ЛП:</Text>
-                  {lpList.map((lp, i) => (
-                    <Text key={i} style={s.feedbackItem}>  {lp}</Text>
-                  ))}
-                </View>
-              )}
-
-              {lpList.length === 0 && muList.length > 0 && (
-                <Text style={s.feedbackNote}>Види ЛП не визначено (немає вправ)</Text>
-              )}
-
-              <Text style={[s.feedbackLabel, { marginTop: Spacing.md }]}>Вірно?</Text>
-
-              <View style={{ flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.md }}>
-                <TouchableOpacity
-                  style={[s.btn, s.btnOutline, { flex: 1 }]}
-                  onPress={() => setCorrecting(true)}
-                >
-                  <Text style={[s.btnText, { color: Colors.textPrimary }]}>Ні</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[s.btn, s.btnPrimary, { flex: 1 }]}
-                  onPress={handleConfirm}
-                >
-                  <Text style={s.btnText}>Так</Text>
-                </TouchableOpacity>
-              </View>
-            </>
-          ) : (
-            <>
-              <Text style={s.modalTitle}>Виправте види ЛП</Text>
-              <Text style={s.feedbackNote}>
-                Виправте, будь ласка, ці дані вручну. AI врахує під час наступного оновлення.
+              <Text style={s.feedbackLabel}>
+                Перерви за видами ЛП ({data.docSource})
               </Text>
-
-              <ScrollView style={{ maxHeight: 300, marginVertical: Spacing.md }}>
-                {allLpTypes.map((lp, i) => {
-                  const isChecked = !!checkedLp[lp];
+              <Text style={s.feedbackNote}>
+                Відмітьте види ЛП, де ви продовжили терміни
+              </Text>
+              <ScrollView style={{ maxHeight: 300, marginVertical: Spacing.sm }}>
+                {lpTypes.map((lp, i) => {
+                  const isChecked = !!checkedLp[lp.normalized];
+                  const isAi = aiSuggested.has(lp.normalized);
                   return (
                     <TouchableOpacity
                       key={i}
                       style={s.checkRow}
-                      onPress={() => setCheckedLp(prev => ({ ...prev, [lp]: !prev[lp] }))}
+                      onPress={() => setCheckedLp(prev => ({ ...prev, [lp.normalized]: !prev[lp.normalized] }))}
                     >
                       <Ionicons
                         name={isChecked ? 'checkbox' : 'square-outline'}
                         size={20}
                         color={isChecked ? Colors.primary : Colors.textTertiary}
                       />
-                      <Text style={s.checkLabel}>{lp}</Text>
+                      <Text style={s.checkLabel}>{lp.display}</Text>
+                      {isAi && <Text style={s.aiTag}>AI</Text>}
                     </TouchableOpacity>
                   );
                 })}
               </ScrollView>
-
-              <View style={{ flexDirection: 'row', gap: Spacing.sm }}>
-                <TouchableOpacity
-                  style={[s.btn, s.btnOutline, { flex: 1 }]}
-                  onPress={() => setCorrecting(false)}
-                >
-                  <Text style={[s.btnText, { color: Colors.textPrimary }]}>Назад</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[s.btn, s.btnPrimary, { flex: 1 }]}
-                  onPress={handleCorrection}
-                  disabled={saving}
-                >
-                  {saving
-                    ? <ActivityIndicator size="small" color="#fff" />
-                    : <Text style={s.btnText}>Зберегти</Text>
-                  }
-                </TouchableOpacity>
-              </View>
             </>
-          )}
+          ) : null}
+
+          {/* Save / OK button */}
+          <View style={{ marginTop: Spacing.md }}>
+            {hasLpTypes ? (
+              <TouchableOpacity
+                style={[s.btn, s.btnPrimary]}
+                onPress={handleSave}
+                disabled={saving}
+              >
+                {saving
+                  ? <ActivityIndicator size="small" color="#fff" />
+                  : <Text style={s.btnText}>Зберегти</Text>
+                }
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={[s.btn, s.btnPrimary]}
+                onPress={onClose}
+              >
+                <Text style={s.btnText}>OK</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
       </View>
     </Modal>
@@ -525,13 +549,17 @@ export default function Main({ route, navigation }) {
   const [fuel, setFuel] = useState({ airfield: '', amount: '' });
   const [flightPurpose, setFlightPurpose] = useState('');
 
+  // Режим редагування
+  const [editMode, setEditMode] = useState(false);
+  const [editFlightId, setEditFlightId] = useState(null);
+
   // Завантажити вправи та налаштування записів з Supabase
   useEffect(() => {
     const load = async () => {
       try {
         const { data, error } = await supabase
           .from('exercises')
-          .select('id, number, name, document, task, category, flights_count')
+          .select('id, number, name, document, task, category, flights_count, is_control, lp_types')
           .order('id');
         if (error) throw error;
         setAllExercises(data || []);
@@ -544,7 +572,7 @@ export default function Main({ route, navigation }) {
             .eq('email', auth.email)
             .maybeSingle();
           if (pilot?.entry_settings) {
-            const parsed = JSON.parse(pilot.entry_settings);
+            const parsed = typeof pilot.entry_settings === 'string' ? JSON.parse(pilot.entry_settings) : pilot.entry_settings;
             if (parsed.aircraft_types?.length) setSettingsAircraftTypes(parsed.aircraft_types);
             if (parsed.sources?.length) setSettingsSources(parsed.sources);
           }
@@ -557,6 +585,60 @@ export default function Main({ route, navigation }) {
     };
     load();
   }, []);
+
+  // Заповнення форми при редагуванні
+  useEffect(() => {
+    if (!route?.params?.edit) return;
+    const { id, data } = route.params.edit;
+    setEditMode(true);
+    setEditFlightId(id);
+
+    // Дата (ISO format: "2025-01-21")
+    if (data.date) {
+      const d = new Date(data.date + 'T00:00:00');
+      if (!isNaN(d.getTime())) {
+        setDateObj(d);
+        setDate(ddmmyyyy(d));
+      }
+    }
+
+    // Тип ПС — з joined aircraft_types
+    setTypePs(data.aircraft_types?.name || '');
+
+    // Час доби + МУ (об'єднати: "Д" + "ПМУ" → "ДПМУ")
+    setTimeDayMu((data.time_of_day || '') + (data.weather_conditions || ''));
+
+    // Вид польоту (зворотній маппінг для форми)
+    const rawFT = data.flight_type || '';
+    if (rawFT === 'Учбово-тренув.') {
+      setFlightType('Учбово-тренувальний');
+    } else {
+      setFlightType(rawFT);
+    }
+
+    setTestTopic(data.test_flight_topic || '');
+    setDocSource(data.document_source || '');
+
+    // Наліт: interval "01:30:00" → "1.30"
+    if (data.flight_time) {
+      const timeMatch = String(data.flight_time).match(/(\d{1,2}):(\d{2})/);
+      if (timeMatch) {
+        setNalit(`${parseInt(timeMatch[1])}.${timeMatch[2]}`);
+      }
+    }
+
+    setCombatApps(String(data.combat_applications || ''));
+
+    // Паливо з joined fuel_records
+    const fuelRec = data.fuel_records?.[0];
+    if (fuelRec) {
+      setFuel({ airfield: fuelRec.airfield || '', amount: String(fuelRec.fuel_amount || '') });
+    }
+
+    setFlightPurpose(data.flight_purpose || '');
+
+    navigation.setParams({ edit: undefined });
+  }, [route?.params?.edit]);
 
   // Фільтр вправ по обраному документу
   const filteredExercises = useMemo(() => {
@@ -606,6 +688,8 @@ export default function Main({ route, navigation }) {
     setCombatApps('');
     setFuel({ airfield: '', amount: '' });
     setFlightPurpose('');
+    setEditMode(false);
+    setEditFlightId(null);
   };
 
   const submit = async () => {
@@ -616,6 +700,53 @@ export default function Main({ route, navigation }) {
 
     try {
       setSubmitting(true);
+
+      // Режим редагування — оновити в Supabase
+      if (editMode && editFlightId) {
+        let dbFlightType = flightType;
+        if (flightType === 'Учбово-тренувальний') dbFlightType = 'Учбово-тренув.';
+
+        const time_of_day = timeDayMu[0];
+        const weather_conditions = timeDayMu.substring(1);
+
+        // Знайти aircraft_type_id
+        const { data: atData, error: atErr } = await supabase
+          .from('aircraft_types').select('id').eq('name', typePs).single();
+        if (atErr || !atData) throw new Error('Тип ПС не знайдено');
+
+        const { error: updateErr } = await supabase
+          .from('flights')
+          .update({
+            date: dateObj.toISOString().split('T')[0],
+            aircraft_type_id: atData.id,
+            time_of_day,
+            weather_conditions,
+            flight_type: dbFlightType,
+            test_flight_topic: dbFlightType === 'На випробування' ? testTopic : null,
+            document_source: docSource || null,
+            flight_time: toHhMmSs(nalit),
+            combat_applications: parseInt(combatApps) || 0,
+            flight_purpose: flightPurpose || null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', editFlightId);
+        if (updateErr) throw updateErr;
+
+        // Оновити паливо
+        await supabase.from('fuel_records').delete().eq('flight_id', editFlightId);
+        if (fuel.airfield && fuel.amount) {
+          await supabase.from('fuel_records').insert({
+            flight_id: editFlightId,
+            airfield: fuel.airfield,
+            fuel_amount: parseFloat(fuel.amount) || 0,
+          });
+        }
+
+        Alert.alert('Готово', 'Запис оновлено');
+        resetForm();
+        tabNavigate('MyRecords');
+        return;
+      }
 
       // Parse timeDayMu: "ДСМУ" → time_of_day="Д", weather="СМУ"
       const time_of_day = timeDayMu[0];
@@ -633,7 +764,7 @@ export default function Main({ route, navigation }) {
 
       // Map flight type
       let dbFlightType = flightType;
-      if (flightType === 'УТП') dbFlightType = 'Учбово-тренув.';
+      if (flightType === 'Учбово-тренувальний') dbFlightType = 'Учбово-тренув.';
 
       // Insert flight
       const { data: flight, error: flightErr } = await supabase
@@ -666,6 +797,9 @@ export default function Main({ route, navigation }) {
             exercise_id: ex.id,
           })));
         if (exErr) console.warn('Помилка вправ:', exErr);
+      } else {
+        // No exercises — dummy UPDATE to trigger MU processing
+        await supabase.from('flights').update({ updated_at: new Date().toISOString() }).eq('id', flight.id);
       }
 
       // Insert fuel
@@ -686,16 +820,21 @@ export default function Main({ route, navigation }) {
         .maybeSingle();
 
       const detectedMu = log?.detected_mu || [];
-      const detectedLp = log?.detected_lp || [];
+      const isControl = selectedExercises.length > 0 && selectedExercises.every(ex => ex.is_control);
 
-      if (detectedMu.length > 0 || detectedLp.length > 0) {
+      // Show popup when KBP selected or MU detected
+      const kbpDocs = ['КБП ВА', 'КБП БА/РА', 'КБПВ'];
+      if (kbpDocs.includes(docSource) || detectedMu.length > 0) {
         setFeedbackData({
           flightId: flight.id,
           userId: userData.id,
-          detectedMu,
-          detectedLp,
-          logId: log?.id,
+          docSource: docSource || null,
           exerciseIds: selectedExercises.map(e => e.id),
+          aircraftTypeId: atData.id,
+          flightDate: dateObj.toISOString().split('T')[0],
+          isControl,
+          detectedMu,
+          logId: log?.id,
         });
         setShowFeedback(true);
       } else {
@@ -757,7 +896,7 @@ export default function Main({ route, navigation }) {
                   value={flightType}
                   onChange={setFlightType}
                   placeholder=" "
-                  options={['УТП', 'На випробування', 'У складі екіпажу']}
+                  options={['Учбово-тренувальний', 'На випробування', 'У складі екіпажу', 'За інструктора', 'За методиками ЛВ']}
                 />
               </View>
             </View>
@@ -784,7 +923,7 @@ export default function Main({ route, navigation }) {
                   value={docSource}
                   onChange={setDocSource}
                   placeholder=" "
-                  options={settingsSources.length > 0 ? settingsSources : ['КБП ВА', 'КЛПВ']}
+                  options={settingsSources.length > 0 ? settingsSources : ['КБП ВА', 'КЛПВ', 'КБПВ', 'КБП БА/РА']}
                 />
               </View>
               <View style={s.col}>
@@ -860,7 +999,7 @@ export default function Main({ route, navigation }) {
 
           {/* ── Кнопки ── */}
           <View style={{ alignItems: 'center' }}>
-            <PrimaryButton title="Додати запис" onPress={submit} loading={submitting} style={{ width: '60%' }} />
+            <PrimaryButton title={editMode ? "Зберегти зміни" : "Додати запис"} onPress={submit} loading={submitting} style={{ width: '60%' }} />
           </View>
 
           <View style={{ height: Spacing.xl }} />
@@ -1166,6 +1305,17 @@ const s = StyleSheet.create({
     fontWeight: '400',
     color: Colors.textPrimary,
     flex: 1,
+  },
+  aiTag: {
+    fontFamily: FONT,
+    fontSize: 11,
+    fontWeight: '400',
+    color: Colors.primary,
+    backgroundColor: Colors.bgTertiary,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    overflow: 'hidden',
   },
   btnOutline: {
     backgroundColor: Colors.bgPrimary,

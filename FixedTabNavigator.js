@@ -13,6 +13,7 @@ import SettingsScreen from './Settings';
 import AdminUsersScreen from './AdminUsers';
 import AdminSettingsScreen from './AdminSettings';
 import MyRecordsScreen from './MyRecords';
+import FlightSummaryScreen from './FlightSummary';
 import BreaksMUScreen from './BreaksMU';
 import BreaksLPScreen from './BreaksLP';
 import CommissionTableScreen from './CommissionTable';
@@ -73,20 +74,19 @@ function TabBar() {
               onPress={() => handleTabPress(tab)}
               activeOpacity={0.7}
             >
-              <View style={{ position: 'relative' }}>
+              {showBadge ? (
+                <View style={styles.badgeCircle}>
+                  <Text style={styles.badgeCircleText}>
+                    {badge > 99 ? '99+' : badge}
+                  </Text>
+                </View>
+              ) : (
                 <Ionicons
                   name={isActive ? tab.icon.replace('-outline', '') : tab.icon}
                   size={18}
                   color={isActive ? Colors.primary : Colors.textTertiary}
                 />
-                {showBadge && (
-                  <View style={styles.badge}>
-                    <Text style={styles.badgeText}>
-                      {badge > 99 ? '99+' : badge}
-                    </Text>
-                  </View>
-                )}
-              </View>
+              )}
               <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>
                 {tab.label}
               </Text>
@@ -119,6 +119,7 @@ function AppStack() {
       <InnerStack.Screen name="AdminUsers" component={AdminUsersScreen} />
       <InnerStack.Screen name="AdminSettings" component={AdminSettingsScreen} />
       <InnerStack.Screen name="MyRecords" component={MyRecordsScreen} />
+      <InnerStack.Screen name="FlightSummary" component={FlightSummaryScreen} />
       <InnerStack.Screen name="BreaksMU" component={BreaksMUScreen} />
       <InnerStack.Screen name="BreaksLP" component={BreaksLPScreen} />
       <InnerStack.Screen name="CommissionTable" component={CommissionTableScreen} />
@@ -209,22 +210,17 @@ const styles = StyleSheet.create({
   tabLabelActive: {
     color: Colors.textPrimary,
   },
-  badge: {
-    position: 'absolute',
-    top: -12,
-    left: 4,
+  badgeCircle: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
     backgroundColor: Colors.error,
-    borderRadius: 8,
-    minWidth: 15,
-    height: 15,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 3,
-    zIndex: 10,
   },
-  badgeText: {
+  badgeCircleText: {
     fontFamily: FONT,
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: '400',
     color: '#FFFFFF',
   },

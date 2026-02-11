@@ -1,0 +1,16 @@
+[
+    {
+        "key": "ctrl+alt+1",
+        "command": "workbench.action.tasks.runTask",
+        "args": "Switch to Claude Subscription"
+    },
+    {
+        "key": "ctrl+alt+2",
+        "command": "workbench.action.tasks.runTask",
+        "args": "Switch to ZAI Subscription"
+    },
+    {
+        "key": "ctrl+shift+r",
+        "command": "workbench.action.reloadWindow"
+    }
+]

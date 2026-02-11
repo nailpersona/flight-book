@@ -2,21 +2,6 @@ import { supabase } from './supabase';
 
 const MU_TYPES = ['ДПМУ', 'ДСМУ', 'ДВМП', 'НПМУ', 'НСМУ', 'НВМП'];
 
-// Mapping: KBP normalized LP type → КЛПВ normalized LP type (by concept)
-const KLPV_KBP_MAP = {
-  'КБП ВА': {
-    'складний_пілотаж': 'складний_вищий_пілотаж',
-    'мала_висота': 'малі_висоти_клпв',
-    'гмв': 'гмв_онб',
-    'групова_злітаність': 'групова_злітаність_зімкнуті',
-  },
-  'КБП БА/РА': {
-    'складний_пілотаж': 'складний_вищий_пілотаж',
-    'мв_гмв_мвк': 'малі_висоти_клпв',
-    'група': 'групова_злітаність_зімкнуті',
-  },
-};
-
 function formatDate(dateStr) {
   if (!dateStr) return '';
   const d = new Date(dateStr);
@@ -54,7 +39,6 @@ function computeColorFromExpiry(expiryDate) {
 
 export async function getBreaksDataFromSupabase(pib) {
   try {
-    // 1. Find user
     const { data: user, error: userError } = await supabase
       .from('users')
       .select('id, name, military_class, test_class, coefficient')
@@ -62,7 +46,6 @@ export async function getBreaksDataFromSupabase(pib) {
       .single();
 
     if (userError || !user) {
-      console.warn('User not found by pib:', pib, userError);
       return { ok: false, error: 'Користувача не знайдено' };
     }
 
@@ -70,22 +53,14 @@ export async function getBreaksDataFromSupabase(pib) {
     const milClass = user.military_class || 2;
     const coeff = 1.0;
 
-    // 2. Fetch all data in parallel
     const [
-      breaksMuRes,
-      breaksLpRes,
-      muDatesRes,
-      lpDatesRes,
-      commissionRes,
-      aircraftRes,
-      pilotSettingsRes,
-      kbpMappingRes,
-      userAircraftRes,
+      breaksMuRes, breaksLpRes, muDatesRes, lpDatesRes,
+      commissionRes, aircraftRes, pilotSettingsRes, kbpMappingRes, userAircraftRes,
     ] = await Promise.all([
       supabase.from('break_periods_mu').select('*').eq('military_class', milClass),
       supabase.from('break_periods_lp').select('*').or(`military_class.eq.${milClass},military_class.is.null`),
-      supabase.from('mu_break_dates').select('aircraft_type_id, mu_condition, last_date, last_control_date').eq('user_id', userId),
-      supabase.from('lp_break_dates').select('lp_type, last_date, last_control_date, aircraft_type_id').eq('user_id', userId),
+      supabase.from('mu_break_dates').select('aircraft_type_id, mu_condition, last_date').eq('user_id', userId),
+      supabase.from('lp_break_dates').select('lp_type, last_date, aircraft_type_id').eq('user_id', userId),
       supabase.from('commission_dates').select('commission_date, expiry_date, commission_type_id, commission_types(name, days)').eq('user_id', userId),
       supabase.from('aircraft_types').select('id, name'),
       supabase.from('pilots').select('entry_settings').eq('pib', pib).maybeSingle(),
@@ -102,7 +77,6 @@ export async function getBreaksDataFromSupabase(pib) {
     const kbpMappings = kbpMappingRes.data || [];
     const userAircraftList = userAircraftRes.data || [];
 
-    // Pilot settings — aircraft types from Settings page
     let pilotAircraftTypes = null;
     if (pilotSettingsRes.data?.entry_settings) {
       try {
@@ -113,29 +87,22 @@ export async function getBreaksDataFromSupabase(pib) {
       } catch (_) {}
     }
 
-    // Aircraft lookup
     const aircraftMap = {};
     const aircraftNameToId = {};
     aircraftTypes.forEach(a => { aircraftMap[a.id] = a.name; aircraftNameToId[a.name] = a.id; });
 
-    // MU allowed days (with coefficient)
     const muAllowed = {};
     breaksMu.forEach(b => {
       muAllowed[b.mu_condition] = Math.floor(b.days * coeff);
     });
 
-    // 3. Build MU result from mu_break_dates table
-    // Group by mu_condition -> array of { aircraft, date, color }
     const muByCondition = {};
     const userAircraftSet = new Set();
     muDates.forEach(row => {
       const acName = aircraftMap[row.aircraft_type_id] || String(row.aircraft_type_id);
       userAircraftSet.add(acName);
       if (!muByCondition[row.mu_condition]) muByCondition[row.mu_condition] = {};
-      muByCondition[row.mu_condition][acName] = {
-        last_date: row.last_date,
-        last_control_date: row.last_control_date,
-      };
+      muByCondition[row.mu_condition][acName] = row.last_date;
     });
 
     const userAircraft = [...userAircraftSet];
@@ -144,49 +111,24 @@ export async function getBreaksDataFromSupabase(pib) {
       const items = [];
       const acDates = muByCondition[mu] || {};
       userAircraft.forEach(acName => {
-        const entry = acDates[acName] || {};
-        const lastDate = entry.last_date || null;
-        const lastControlDate = entry.last_control_date || null;
+        const lastDate = acDates[acName] || null;
         const allowed = muAllowed[mu] || 0;
-
-        // Training expiry = last_date + break_period
-        let trainingExpiry = null;
+        let expiryDate = null;
         if (lastDate && allowed) {
           const exp = new Date(lastDate);
           exp.setDate(exp.getDate() + allowed);
-          trainingExpiry = exp.toISOString().split('T')[0];
+          expiryDate = exp.toISOString().split('T')[0];
         }
-
-        // Control expiry = last_control_date + 10 days
-        let controlExpiry = null;
-        if (lastControlDate) {
-          const exp = new Date(lastControlDate);
-          exp.setDate(exp.getDate() + 10);
-          controlExpiry = exp.toISOString().split('T')[0];
-        }
-
-        // Effective expiry = MAX(training, control)
-        let expiryDate = null;
-        if (trainingExpiry && controlExpiry) {
-          expiryDate = trainingExpiry > controlExpiry ? trainingExpiry : controlExpiry;
-        } else {
-          expiryDate = trainingExpiry || controlExpiry;
-        }
-
-        const color = expiryDate ? computeColorFromExpiry(expiryDate) : 'gray';
         items.push({
           aircraft: acName,
           date: formatDate(lastDate),
           expiryDate: formatDate(expiryDate),
-          color,
+          color: lastDate ? computeColor(lastDate, allowed) : 'gray',
         });
       });
       muResult[mu] = items;
     });
 
-    // 4. Build LP result — grouped by KBP per pilot's aircraft
-
-    // Map aircraft_type_id → KBP documents (excluding КЛПВ)
     const aircraftToKbp = {};
     kbpMappings.forEach(m => {
       if (m.kbp_document === 'КЛПВ') return;
@@ -194,20 +136,13 @@ export async function getBreaksDataFromSupabase(pib) {
       aircraftToKbp[m.aircraft_type_id].push(m.kbp_document);
     });
 
-    // Map normalized lp_type + aircraft_type_id → { last_date, last_control_date }
-    // Nested: { lp_type: { aircraft_type_id: { last_date, last_control_date } } }
-    // Old records (aircraft_type_id=null) stored under '_all' as fallback
     const lpDateMap = {};
     lpDates.forEach(row => {
       if (!lpDateMap[row.lp_type]) lpDateMap[row.lp_type] = {};
       const key = row.aircraft_type_id != null ? row.aircraft_type_id : '_all';
-      lpDateMap[row.lp_type][key] = {
-        last_date: row.last_date,
-        last_control_date: row.last_control_date,
-      };
+      lpDateMap[row.lp_type][key] = row.last_date;
     });
 
-    // Get pilot's aircraft IDs (prefer user_aircraft, fallback to mu history)
     let pilotAcIds = userAircraftList.map(ua => ua.aircraft_type_id);
     if (pilotAcIds.length === 0) {
       const muAcIds = new Set();
@@ -215,9 +150,6 @@ export async function getBreaksDataFromSupabase(pib) {
       pilotAcIds = [...muAcIds];
     }
 
-    // Determine which KBPs pilot has + which aircraft per KBP
-    // Main aircraft (1 non-КЛПВ KBP) activate their KBP
-    // Dependent aircraft like Л-39 (multiple KBPs) only join already-activated KBPs
     const kbpToAircraft = {};
     const activeKbps = new Set();
     const dependentAcIds = [];
@@ -225,7 +157,6 @@ export async function getBreaksDataFromSupabase(pib) {
     pilotAcIds.forEach(acId => {
       const kbps = aircraftToKbp[acId] || [];
       if (kbps.length === 1) {
-        // Main aircraft — activates its KBP
         const kbp = kbps[0];
         activeKbps.add(kbp);
         if (!kbpToAircraft[kbp]) kbpToAircraft[kbp] = [];
@@ -234,12 +165,10 @@ export async function getBreaksDataFromSupabase(pib) {
           kbpToAircraft[kbp].push(acName);
         }
       } else if (kbps.length > 1) {
-        // Dependent (e.g., Л-39) — added to activated KBPs later
         dependentAcIds.push(acId);
       }
     });
 
-    // Add dependent aircraft to KBPs activated by main aircraft
     dependentAcIds.forEach(acId => {
       const kbps = aircraftToKbp[acId] || [];
       kbps.forEach(kbp => {
@@ -253,18 +182,16 @@ export async function getBreaksDataFromSupabase(pib) {
       });
     });
 
-    // Group break_periods_lp entries by kbp_document
-    // Legacy types (no kbp_document) merge into first active KBP
     const kbpOrder = ['КБП ВА', 'КБП БА/РА', 'КБПВ'];
     const firstActiveKbp = kbpOrder.find(k => kbpToAircraft[k]?.length > 0) || null;
     const lpByKbp = {};
     breaksLp.forEach(b => {
       let kbp;
       if (b.kbp_document) {
-        if (!kbpToAircraft[b.kbp_document]) return; // pilot doesn't fly this KBP — skip
+        if (!kbpToAircraft[b.kbp_document]) return;
         kbp = b.kbp_document;
       } else {
-        kbp = firstActiveKbp; // legacy (no KBP) → first active
+        kbp = firstActiveKbp;
         if (!kbp) return;
       }
       if (!lpByKbp[kbp]) lpByKbp[kbp] = [];
@@ -276,11 +203,10 @@ export async function getBreaksDataFromSupabase(pib) {
         sortOrder: b.sort_order,
       });
     });
-    // Sort: by sort_order if available, otherwise by dates then months
+
     const hasAnyDate = (normalized) => {
       const m = lpDateMap[normalized];
-      if (!m) return false;
-      return Object.values(m).some(v => v.last_date || v.last_control_date);
+      return m && Object.keys(m).length > 0;
     };
     Object.values(lpByKbp).forEach(arr => {
       arr.sort((a, b) => {
@@ -294,7 +220,6 @@ export async function getBreaksDataFromSupabase(pib) {
       });
     });
 
-    // Build lpSections array and flat lpResult
     const lpSections = [];
     const lpResult = {};
 
@@ -315,54 +240,29 @@ export async function getBreaksDataFromSupabase(pib) {
 
         const items = aircraft.map(acName => {
           const acId = aircraftNameToId[acName];
-          // Per-aircraft dates, fallback to old '_all' records
-          const entry = (acId && datesByAc[acId]) || datesByAc['_all'] || {};
-          const lastDate = entry.last_date || null;
-          const lastControlDate = entry.last_control_date || null;
-
-          // Training expiry = last_date + break_period
-          let trainingExpiry = null;
+          const lastDate = (acId && datesByAc[acId]) || datesByAc['_all'] || null;
+          let expiryDate = null;
           if (lastDate && allowedDays) {
             const exp = new Date(lastDate);
             exp.setDate(exp.getDate() + allowedDays);
-            trainingExpiry = exp.toISOString().split('T')[0];
+            expiryDate = exp.toISOString().split('T')[0];
           }
-
-          // Control expiry = last_control_date + 10 days
-          let controlExpiry = null;
-          if (lastControlDate) {
-            const exp = new Date(lastControlDate);
-            exp.setDate(exp.getDate() + 10);
-            controlExpiry = exp.toISOString().split('T')[0];
-          }
-
-          // Effective expiry = MAX(training, control)
-          let expiryDate = null;
-          if (trainingExpiry && controlExpiry) {
-            expiryDate = trainingExpiry > controlExpiry ? trainingExpiry : controlExpiry;
-          } else {
-            expiryDate = trainingExpiry || controlExpiry;
-          }
-
-          const color = expiryDate ? computeColorFromExpiry(expiryDate) : 'gray';
+          const color = lastDate ? computeColor(lastDate, allowedDays) : 'gray';
           return {
             aircraft: acName,
             aircraftTypeId: acId || null,
             date: formatDate(lastDate),
-            rawDate: lastDate,
             expiryDate: formatDate(expiryDate),
             color,
           };
         });
 
-        lpSections.push({ type: 'lp', name: displayKey, normalized: cfg.normalized, kbpDoc: kbp, kbpMonths: cfg.months, items });
+        lpSections.push({ type: 'lp', name: displayKey, normalized: cfg.normalized, items });
         lpResult[displayKey] = items;
       });
     });
 
     // === Conditional LP types (КБПВ) ===
-    // бз_нц_прості: green if малі_висоти is valid
-    // бз_нц_складні: green if BOTH малі_висоти AND складний_пілотаж_мв are valid
     const LP_DEPENDENCIES = {
       'бз_нц_прості': ['малі_висоти'],
       'бз_нц_складні': ['малі_висоти', 'складний_пілотаж_мв'],
@@ -388,102 +288,8 @@ export async function getBreaksDataFromSupabase(pib) {
       });
     });
 
-    // === КЛПВ integration ===
-    // Build КЛПВ break config (raw months, no coefficient)
-    const klpvBreaks = {};
-    breaksLp.forEach(b => {
-      if (b.kbp_document !== 'КЛПВ') return;
-      if (!klpvBreaks[b.lp_type_normalized]) {
-        klpvBreaks[b.lp_type_normalized] = {
-          displayName: b.lp_type,
-          months: b.months,
-        };
-      }
-    });
-
-    // Track which КЛПВ types are linked to KBP sections
-    const linkedKlpvTypes = new Set();
-
-    // Add КЛПВ expiry to matching KBP sections where months differ
-    lpSections.forEach(section => {
-      if (!section.kbpDoc) return;
-      const mapping = KLPV_KBP_MAP[section.kbpDoc];
-      if (!mapping) return;
-      const klpvNorm = mapping[section.normalized];
-      if (!klpvNorm) return;
-      const klpvCfg = klpvBreaks[klpvNorm];
-      if (!klpvCfg) return;
-      linkedKlpvTypes.add(klpvNorm);
-      if (klpvCfg.months === section.kbpMonths) return;
-      const klpvAllowedDays = klpvCfg.months * 30;
-      section.items.forEach(item => {
-        if (!item.rawDate) return;
-        const exp = new Date(item.rawDate);
-        exp.setDate(exp.getDate() + klpvAllowedDays);
-        const klpvExpiry = exp.toISOString().split('T')[0];
-        item.klpvExpiryDate = formatDate(klpvExpiry);
-        item.klpvColor = computeColorFromExpiry(klpvExpiry);
-      });
-      section.hasKlpv = true;
-    });
-
-    // Collect КЛПВ-only types (not mapped to any active KBP)
-    // Skip КЛПВ entirely for КБПВ-only pilots (all break periods covered by КБПВ)
-    const KLPV_ALWAYS_HIDE = new Set(['дозаправлення_клпв']);
-    const KLPV_HELI_ONLY = new Set([
-      'десантування_клпв', 'продовжений_зліт', 'посадка_самообертання',
-      'пошуково_рятувальні', 'захід_макс_градієнт', 'зовнішня_підвіска_евакуація',
-    ]);
-    const pilotHasKbpv = activeKbps.has('КБПВ');
-    const pilotOnlyKbpv = pilotHasKbpv && !activeKbps.has('КБП ВА') && !activeKbps.has('КБП БА/РА');
-
-    const allPilotAircraft = [...new Set(Object.values(kbpToAircraft).flat())];
-    const klpvOnlySections = [];
-    Object.entries(klpvBreaks).forEach(([norm, cfg]) => {
-      if (linkedKlpvTypes.has(norm)) return;
-      if (KLPV_ALWAYS_HIDE.has(norm)) return;
-      if (pilotOnlyKbpv) return;
-      if (KLPV_HELI_ONLY.has(norm) && !pilotHasKbpv) return;
-      const datesByAc = lpDateMap[norm] || {};
-      const items = allPilotAircraft.map(acName => {
-        const acId = aircraftNameToId[acName];
-        const entry = (acId && datesByAc[acId]) || datesByAc['_all'] || {};
-        const lastDate = entry.last_date || null;
-        const allowedDays = cfg.months * 30;
-        let expiryDate = null;
-        if (lastDate && allowedDays) {
-          const exp = new Date(lastDate);
-          exp.setDate(exp.getDate() + allowedDays);
-          expiryDate = exp.toISOString().split('T')[0];
-        }
-        const color = expiryDate ? computeColorFromExpiry(expiryDate) : 'gray';
-        return {
-          aircraft: acName,
-          aircraftTypeId: acId || null,
-          date: formatDate(lastDate),
-          rawDate: lastDate,
-          expiryDate: formatDate(expiryDate),
-          color,
-        };
-      });
-      if (items.length > 0) {
-        klpvOnlySections.push({
-          type: 'klpv',
-          name: cfg.displayName,
-          normalized: norm,
-          items,
-        });
-      }
-    });
-    if (klpvOnlySections.length > 0) {
-      lpSections.push({ type: 'klpv_header', name: 'Згідно КЛПВ', items: [] });
-      lpSections.push(...klpvOnlySections);
-    }
-
     const LP_TYPES = Object.keys(lpResult);
 
-    // 5. Commission dates — restructured
-    // Group raw data by commission type name
     const rawCommission = {};
     commissions.forEach(c => {
       const typeName = c.commission_types?.name;
@@ -495,14 +301,12 @@ export async function getBreaksDataFromSupabase(pib) {
         days: c.commission_types?.days,
       });
     });
-    // Sort each group by date ascending
     Object.values(rawCommission).forEach(arr => {
       arr.sort((a, b) => new Date(a.rawDate) - new Date(b.rawDate));
     });
 
     const commissionResult = {};
 
-    // ЛЛК and УМО — separate commission types, each valid for 6 months
     const llkEntries = rawCommission['ЛЛК'] || [];
     const umoEntries = rawCommission['УМО'] || [];
     const llkEntry = llkEntries.length > 0 ? llkEntries[0] : null;
@@ -518,10 +322,9 @@ export async function getBreaksDataFromSupabase(pib) {
       return d.toISOString().split('T')[0];
     }
 
-    const llkExpiry = addMonths(llkDate, 12); // ЛЛК valid for 1 year
-    const umoExpiry = addMonths(umoDate, 6);  // УМО valid for 6 months
+    const llkExpiry = addMonths(llkDate, 12);
+    const umoExpiry = addMonths(umoDate, 6);
 
-    // Determine what's next based on which was completed last
     let nextType = null;
     let nextDate = null;
     if (llkDate && umoDate) {
@@ -541,20 +344,13 @@ export async function getBreaksDataFromSupabase(pib) {
     }
 
     commissionResult['ЛЛК/УМО'] = {
-      llk: llkDate ? {
-        date: formatDate(llkDate),
-        color: computeColorFromExpiry(llkExpiry),
-      } : null,
-      umo: umoDate ? {
-        date: formatDate(umoDate),
-        color: computeColorFromExpiry(umoExpiry),
-      } : null,
+      llk: llkDate ? { date: formatDate(llkDate), color: computeColorFromExpiry(llkExpiry) } : null,
+      umo: umoDate ? { date: formatDate(umoDate), color: computeColorFromExpiry(umoExpiry) } : null,
       nextType,
       nextDate: formatDate(nextDate),
       nextColor: nextDate ? computeColorFromExpiry(nextDate) : 'gray',
     };
 
-    // Ст. 205 ПРІАЗ — per aircraft type from pilot settings
     const priaz = rawCommission['Ст. 205 ПРІАЗ'] || [];
     const priazEntry = priaz.length > 0 ? priaz[0] : null;
     const priazAircraft = pilotAircraftTypes || userAircraft;
@@ -570,7 +366,6 @@ export async function getBreaksDataFromSupabase(pib) {
       return { aircraft: ac, date: '', expiryDate: '', color: 'gray' };
     });
 
-    // Other simple commission types
     ['Аварійне залишення', 'Відпустка', 'Стрибки з парашутом'].forEach(typeName => {
       const entries = rawCommission[typeName] || [];
       if (entries.length > 0) {
@@ -607,12 +402,10 @@ export async function updateLpBreakDateInSupabase(pib, lpTypeNormalized, aircraf
       .from('users').select('id').eq('name', pib).single();
     if (userErr || !user) return { ok: false, error: 'Користувача не знайдено' };
 
-    // Parse DD.MM.YYYY -> YYYY-MM-DD
     const parts = dateStr.split('.');
     if (parts.length !== 3) return { ok: false, error: 'Невірний формат дати' };
     const isoDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
 
-    // Upsert lp_break_dates (per aircraft)
     let query = supabase
       .from('lp_break_dates')
       .select('id')
@@ -657,10 +450,7 @@ export async function getAllPilotsFromSupabase() {
       .order('name');
 
     if (error) throw error;
-    return {
-      ok: true,
-      pilots: (data || []).map(u => u.name),
-    };
+    return { ok: true, pilots: (data || []).map(u => u.name) };
   } catch (error) {
     console.error('getAllPilotsFromSupabase error:', error);
     return { ok: false, pilots: [] };
@@ -669,18 +459,11 @@ export async function getAllPilotsFromSupabase() {
 
 export async function getAnnualChecksFromSupabase(pib) {
   try {
-    // Find user
     const { data: user, error: userError } = await supabase
-      .from('users')
-      .select('id')
-      .eq('name', pib)
-      .single();
+      .from('users').select('id').eq('name', pib).single();
 
-    if (userError || !user) {
-      return { ok: false, error: 'Користувача не знайдено' };
-    }
+    if (userError || !user) return { ok: false, error: 'Користувача не знайдено' };
 
-    // Fetch annual checks
     const { data: checks, error: checksError } = await supabase
       .from('annual_checks')
       .select('check_type, check_date, expiry_date, months_valid')
@@ -688,7 +471,6 @@ export async function getAnnualChecksFromSupabase(pib) {
 
     if (checksError) throw checksError;
 
-    // Build result — one entry per check_type (latest date if multiple)
     const byType = {};
     (checks || []).forEach(c => {
       const existing = byType[c.check_type];
@@ -712,29 +494,20 @@ export async function getAnnualChecksFromSupabase(pib) {
 
 export async function updateAnnualCheckDateInSupabase(pib, checkType, dateStr) {
   try {
-    // Find user
     const { data: user, error: userErr } = await supabase
-      .from('users')
-      .select('id')
-      .eq('name', pib)
-      .single();
+      .from('users').select('id').eq('name', pib).single();
 
-    if (userErr || !user) {
-      return { ok: false, error: 'Користувача не знайдено' };
-    }
+    if (userErr || !user) return { ok: false, error: 'Користувача не знайдено' };
 
-    // Parse date DD.MM.YYYY -> YYYY-MM-DD
     const parts = dateStr.split('.');
     if (parts.length !== 3) return { ok: false, error: 'Невірний формат дати' };
     const isoDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
 
-    // All annual checks are 12 months valid
     const monthsValid = 12;
     const d = new Date(isoDate);
     d.setMonth(d.getMonth() + monthsValid);
     const expiryDate = d.toISOString().split('T')[0];
 
-    // Check if entry exists
     const { data: existing } = await supabase
       .from('annual_checks')
       .select('id')
@@ -770,24 +543,14 @@ export async function updateAnnualCheckDateInSupabase(pib, checkType, dateStr) {
 
 export async function updateCommissionDateInSupabase(pib, category, dateStr) {
   try {
-    // Find user
     const { data: user, error: userErr } = await supabase
-      .from('users')
-      .select('id')
-      .eq('name', pib)
-      .single();
+      .from('users').select('id').eq('name', pib).single();
 
-    if (userErr || !user) {
-      return { ok: false, error: 'Користувача не знайдено' };
-    }
+    if (userErr || !user) return { ok: false, error: 'Користувача не знайдено' };
 
-    // Parse date DD.MM.YYYY -> YYYY-MM-DD
     const parts = dateStr.split('.');
     if (parts.length !== 3) return { ok: false, error: 'Невірний формат дати' };
     const isoDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
-
-    // Find commission type (ЛЛК and УМО are now separate types)
-    const isLlkOrUmo = category === 'ЛЛК' || category === 'УМО';
 
     const { data: cType, error: ctErr } = await supabase
       .from('commission_types')
@@ -795,11 +558,8 @@ export async function updateCommissionDateInSupabase(pib, category, dateStr) {
       .eq('name', category)
       .single();
 
-    if (ctErr || !cType) {
-      return { ok: false, error: 'Тип комісування не знайдено: ' + category };
-    }
+    if (ctErr || !cType) return { ok: false, error: 'Тип комісування не знайдено: ' + category };
 
-    // Compute expiry: ЛЛК = +12 months, УМО = +6 months, others = +days
     const d = new Date(isoDate);
     if (category === 'ЛЛК') {
       d.setMonth(d.getMonth() + 12);
@@ -810,7 +570,6 @@ export async function updateCommissionDateInSupabase(pib, category, dateStr) {
     }
     const expiryDate = d.toISOString().split('T')[0];
 
-    // Fetch existing entry for this type
     const { data: existing } = await supabase
       .from('commission_dates')
       .select('id')
@@ -839,6 +598,209 @@ export async function updateCommissionDateInSupabase(pib, category, dateStr) {
     return { ok: true };
   } catch (error) {
     console.error('updateCommissionDateInSupabase error:', error);
+    return { ok: false, error: String(error.message || error) };
+  }
+}
+
+/* ── Readiness dashboard: all pilots overview ── */
+
+const LP_COL_DEFS = [
+  { label: 'Склад.піл.', match: n => n.startsWith('складний_пілотаж') || n === 'складний_вищий_пілотаж' || n === 'простий_пілотаж' },
+  { label: 'Мала вис.', match: n => n === 'мала_висота' || n.startsWith('малі_висоти') || n === 'мв_гмв_мвк' },
+  { label: 'ГМВ', match: n => n === 'гмв' || n === 'гмв_онб' },
+  { label: 'Бой.заст.', match: n => n === 'бойове_застосування' || n.startsWith('бз_') || n === 'бомбометання' || n === 'бойове_маневрування' },
+  { label: 'Груп.', match: n => n.startsWith('групова_злітаність') || n === 'група' },
+  { label: 'Атаки', match: n => n.startsWith('атаки_') },
+  { label: 'Десант.', match: n => n.startsWith('десантування') },
+];
+
+const ANNUAL_MAP = [
+  { dbType: 'ТП', label: 'ТП' },
+  { dbType: 'ТП_дублюючі', label: 'ТП дубл.' },
+  { dbType: 'навігація', label: 'Навіг.' },
+  { dbType: 'БЗ', label: 'БЗ' },
+  { dbType: 'інструкторська', label: 'Інстр.' },
+  { dbType: 'Методика ЛВ', label: 'Мет.ЛВ' },
+  { dbType: 'Захід за приладами', label: 'Зах.прил.' },
+  { dbType: 'ТП з ІВД', label: 'ТП ІВД' },
+];
+
+function worstColor(a, b) {
+  const order = { red: 0, yellow: 1, green: 2, gray: 3 };
+  return (order[a] ?? 3) < (order[b] ?? 3) ? a : b;
+}
+
+export async function getAllPilotsReadinessData() {
+  try {
+    const [
+      usersRes, muDatesRes, lpDatesRes, commDatesRes, annualRes,
+      breaksMuRes, breaksLpRes, aircraftRes, kbpMapRes, userAcRes,
+    ] = await Promise.all([
+      supabase.from('users').select('id, name, rank, position, military_class, test_class, coefficient, sort_order, role').order('sort_order'),
+      supabase.from('mu_break_dates').select('user_id, aircraft_type_id, mu_condition, last_date'),
+      supabase.from('lp_break_dates').select('user_id, lp_type, last_date, aircraft_type_id'),
+      supabase.from('commission_dates').select('user_id, commission_date, expiry_date, commission_type_id, commission_types(name, days)'),
+      supabase.from('annual_checks').select('user_id, check_type, check_date, expiry_date'),
+      supabase.from('break_periods_mu').select('*'),
+      supabase.from('break_periods_lp').select('lp_type_normalized, military_class, months, kbp_document'),
+      supabase.from('aircraft_types').select('id, name'),
+      supabase.from('aircraft_kbp_mapping').select('aircraft_type_id, kbp_document'),
+      supabase.from('user_aircraft').select('user_id, aircraft_type_id'),
+    ]);
+
+    const users = (usersRes.data || []).filter(u => u.role !== 'admin');
+    const allMuDates = muDatesRes.data || [];
+    const allLpDates = lpDatesRes.data || [];
+    const allCommissions = commDatesRes.data || [];
+    const allAnnual = annualRes.data || [];
+    const breaksMuAll = breaksMuRes.data || [];
+    const breaksLpAll = breaksLpRes.data || [];
+    const aircraftTypes = aircraftRes.data || [];
+    const kbpMappings = kbpMapRes.data || [];
+    const userAircraftAll = userAcRes.data || [];
+
+    const aircraftMap = {};
+    aircraftTypes.forEach(a => { aircraftMap[a.id] = a.name; });
+
+    const aircraftToKbp = {};
+    kbpMappings.forEach(m => {
+      if (m.kbp_document === 'КЛПВ') return;
+      if (!aircraftToKbp[m.aircraft_type_id]) aircraftToKbp[m.aircraft_type_id] = [];
+      if (!aircraftToKbp[m.aircraft_type_id].includes(m.kbp_document))
+        aircraftToKbp[m.aircraft_type_id].push(m.kbp_document);
+    });
+
+    const muPeriodsByClass = {};
+    breaksMuAll.forEach(b => {
+      if (!muPeriodsByClass[b.military_class]) muPeriodsByClass[b.military_class] = {};
+      muPeriodsByClass[b.military_class][b.mu_condition] = b.days;
+    });
+
+    const groupBy = (arr, key) => {
+      const m = {};
+      arr.forEach(r => { if (!m[r[key]]) m[r[key]] = []; m[r[key]].push(r); });
+      return m;
+    };
+    const muByUser = groupBy(allMuDates, 'user_id');
+    const lpByUser = groupBy(allLpDates, 'user_id');
+    const commByUser = groupBy(allCommissions, 'user_id');
+    const annualByUser = groupBy(allAnnual, 'user_id');
+
+    const userAcByUser = {};
+    userAircraftAll.forEach(r => {
+      if (!userAcByUser[r.user_id]) userAcByUser[r.user_id] = [];
+      userAcByUser[r.user_id].push(r.aircraft_type_id);
+    });
+
+    const pilots = users.map(user => {
+      const userId = user.id;
+      const milClass = user.military_class || 2;
+      const coeff = 1.0;
+
+      let userAcIds = userAcByUser[userId] || [];
+      if (userAcIds.length === 0) {
+        const s = new Set();
+        (muByUser[userId] || []).forEach(r => s.add(r.aircraft_type_id));
+        userAcIds = [...s];
+      }
+      const userAcNames = userAcIds.map(id => aircraftMap[id]).filter(Boolean);
+
+      // MU status
+      const muPeriods = muPeriodsByClass[milClass] || {};
+      const userMuDates = muByUser[userId] || [];
+      const mu = {};
+      MU_TYPES.forEach(t => {
+        const allowed = Math.floor((muPeriods[t] || 0) * coeff);
+        const entries = userMuDates.filter(r => r.mu_condition === t);
+        if (entries.length === 0 || !allowed) { mu[t] = 'gray'; return; }
+        let w = 'green';
+        entries.forEach(e => { w = worstColor(w, computeColor(e.last_date, allowed)); });
+        mu[t] = w;
+      });
+
+      // LP status
+      const userLpDates = lpByUser[userId] || [];
+      const userKbps = new Set();
+      userAcIds.forEach(acId => { (aircraftToKbp[acId] || []).forEach(k => userKbps.add(k)); });
+
+      const lpPeriodMap = {};
+      breaksLpAll.forEach(bp => {
+        if (bp.kbp_document && !userKbps.has(bp.kbp_document)) return;
+        const mc = bp.military_class;
+        if (mc !== null && mc !== milClass) return;
+        const key = bp.lp_type_normalized;
+        const months = mc === null ? bp.months : Math.floor(bp.months * coeff);
+        if (!lpPeriodMap[key] || mc === milClass) lpPeriodMap[key] = months;
+      });
+
+      const lp = {};
+      LP_COL_DEFS.forEach(col => {
+        let w = 'gray';
+        userLpDates.forEach(ld => {
+          if (!col.match(ld.lp_type)) return;
+          const months = lpPeriodMap[ld.lp_type];
+          if (!months) return;
+          w = worstColor(w, computeColor(ld.last_date, months * 30));
+        });
+        lp[col.label] = w;
+      });
+
+      // Commission status
+      const userComm = commByUser[userId] || [];
+      const commLatest = {};
+      userComm.forEach(c => {
+        const name = c.commission_types?.name;
+        if (!name) return;
+        if (!commLatest[name] || new Date(c.commission_date) > new Date(commLatest[name].commission_date))
+          commLatest[name] = c;
+      });
+
+      const commission = {};
+      const azar = commLatest['Аварійне залишення'];
+      commission['Авар.зал.'] = azar ? computeColorFromExpiry(azar.expiry_date) : 'gray';
+      const st205 = commLatest['Ст. 205 ПРІАЗ'];
+      commission['Ст.205'] = st205 ? computeColorFromExpiry(st205.expiry_date) : 'gray';
+      const llk = commLatest['ЛЛК'];
+      const umo = commLatest['УМО'];
+      let llkUmo = 'gray';
+      if (llk) llkUmo = computeColorFromExpiry(llk.expiry_date);
+      if (umo) { const uc = computeColorFromExpiry(umo.expiry_date); llkUmo = llk ? worstColor(llkUmo, uc) : uc; }
+      commission['ЛЛК/УМО'] = llkUmo;
+      const vac = commLatest['Відпустка'];
+      commission['Відпустка'] = vac ? computeColorFromExpiry(vac.expiry_date) : 'gray';
+      const par = commLatest['Стрибки з парашутом'];
+      commission['Стрибки'] = par ? computeColorFromExpiry(par.expiry_date) : 'gray';
+
+      // Annual checks status
+      const userAnnual = annualByUser[userId] || [];
+      const annualLatest = {};
+      userAnnual.forEach(c => {
+        if (!annualLatest[c.check_type] || new Date(c.check_date) > new Date(annualLatest[c.check_type].check_date))
+          annualLatest[c.check_type] = c;
+      });
+      const annual = {};
+      ANNUAL_MAP.forEach(({ dbType, label }) => {
+        const entry = annualLatest[dbType];
+        annual[label] = entry ? computeColorFromExpiry(entry.expiry_date) : 'gray';
+      });
+
+      // Overall
+      const allColors = [...Object.values(mu), ...Object.values(lp), ...Object.values(commission), ...Object.values(annual)].filter(c => c !== 'gray');
+      const overallStatus = allColors.length > 0 ? allColors.reduce((w, c) => worstColor(w, c), 'green') : 'gray';
+
+      return { id: userId, name: user.name, rank: user.rank || '', position: user.position || '', aircraft: userAcNames, mu, lp, commission, annual, overallStatus };
+    });
+
+    const summary = { total: pilots.length, green: 0, yellow: 0, red: 0 };
+    pilots.forEach(p => {
+      if (p.overallStatus === 'green') summary.green++;
+      else if (p.overallStatus === 'yellow') summary.yellow++;
+      else if (p.overallStatus === 'red') summary.red++;
+    });
+
+    return { ok: true, data: { pilots, summary } };
+  } catch (error) {
+    console.error('getAllPilotsReadinessData error:', error);
     return { ok: false, error: String(error.message || error) };
   }
 }

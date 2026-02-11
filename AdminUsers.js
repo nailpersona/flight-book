@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, SafeAreaView, KeyboardAvoidingView, Platform } from 'react-native';
-import api from './api';
+import { supabase } from './supabase';
 
 const DARK = '#333'; const SHADOW = { shadowColor:'#000', shadowOpacity:0.18, shadowRadius:8, shadowOffset:{width:0,height:4}, elevation:3 };
 
@@ -14,7 +14,13 @@ export default function AdminUsers({ route, navigation }) {
   const submit = async () => {
     try{
       if(!email || !password) return Alert.alert('Увага','Email і пароль обовʼязкові');
-      const j = await api.adminCreateUser(token, { email, pib, role, password });
+      const { data: j, error: rpcErr } = await supabase.rpc('fn_admin_create_user', {
+        p_email: email.trim(),
+        p_name: pib.trim(),
+        p_role: role,
+        p_password: password,
+      });
+      if(rpcErr) throw new Error(rpcErr.message);
       if(!j?.ok) throw new Error(j?.error || 'Помилка');
       Alert.alert('Готово','Користувача збережено');
       setEmail(''); setPib(''); setPassword('');

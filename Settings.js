@@ -10,10 +10,12 @@ import {
   ScrollView,
   Modal,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { AuthCtx } from './contexts';
 import { supabase } from './supabase';
-import api from './api';
 
 const FONT = 'NewsCycle-Regular';
 const DARK = '#333333';
@@ -38,20 +40,40 @@ export default function Settings({ navigation }) {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [updatingPassword, setUpdatingPassword] = useState(false);
 
+  // User info from DB
+  const [userInfo, setUserInfo] = useState({ rank: '', position: '' });
+
   // Entry settings state
   const [selectedAircraftTypes, setSelectedAircraftTypes] = useState([]);
   const [selectedSources, setSelectedSources] = useState([]);
   const [showAircraftTypesModal, setShowAircraftTypesModal] = useState(false);
   const [showSourcesModal, setShowSourcesModal] = useState(false);
 
-  const SOURCES = ['КБП ВА', 'КЛПВ'];
+  const SOURCES = ['КБП ВА', 'КЛПВ', 'КБПВ', 'КБП БА/РА'];
   const ALL_AIRCRAFT_TYPES = [...AIRCRAFT_TYPES['Літаки'], ...AIRCRAFT_TYPES['Вертольоти']];
 
-  // Calculate total hours from entries (auto-calculated)
-  const totalHours = entries
+  // Parse "HH.MM" string to total minutes (e.g. "157.30" → 9450)
+  const parseHHMM = (str) => {
+    if (!str) return 0;
+    const s = String(str);
+    if (s.includes('.')) {
+      const [h, m] = s.split('.');
+      return (parseInt(h, 10) || 0) * 60 + (parseInt(m, 10) || 0);
+    }
+    return (parseInt(s, 10) || 0) * 60;
+  };
+  // Format minutes to "HH.MM" string (e.g. 9450 → "157.30")
+  const formatHHMM = (mins) => {
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return h + '.' + String(m).padStart(2, '0');
+  };
+
+  // Calculate total hours from entries in HH.MM format
+  const totalMinutes = entries
     .filter(e => e.type && e.hours)
-    .reduce((acc, e) => acc + (parseFloat(e.hours) || 0), 0)
-    .toString();
+    .reduce((acc, e) => acc + parseHHMM(e.hours), 0);
+  const totalHours = formatHHMM(totalMinutes);
 
   // Load pilot data from Supabase
   useEffect(() => {
@@ -61,6 +83,17 @@ export default function Settings({ navigation }) {
   const loadPilotData = async () => {
     try {
       setLoading(true);
+
+      // Load rank & position from users table
+      const { data: userData } = await supabase
+        .from('users')
+        .select('rank, position')
+        .eq('email', auth?.email)
+        .maybeSingle();
+
+      if (userData) {
+        setUserInfo({ rank: userData.rank || '', position: userData.position || '' });
+      }
 
       const { data, error } = await supabase
         .from('pilots')
@@ -73,7 +106,8 @@ export default function Settings({ navigation }) {
       if (data) {
         // Load flight hours by aircraft type
         if (data.flight_hours_by_type) {
-          const parsed = JSON.parse(data.flight_hours_by_type);
+          let parsed = data.flight_hours_by_type;
+          if (typeof parsed === 'string') parsed = JSON.parse(parsed);
           if (Array.isArray(parsed) && parsed.length > 0) {
             setEntries(parsed.map((item, index) => ({
               id: index + 1,
@@ -86,7 +120,8 @@ export default function Settings({ navigation }) {
 
         // Load entry settings
         if (data.entry_settings) {
-          const parsed = JSON.parse(data.entry_settings);
+          let parsed = data.entry_settings;
+          if (typeof parsed === 'string') parsed = JSON.parse(parsed);
           if (parsed.aircraft_types) {
             setSelectedAircraftTypes(parsed.aircraft_types);
           }
@@ -184,9 +219,12 @@ export default function Settings({ navigation }) {
     }
     try {
       setUpdatingPassword(true);
-      const result = await api.updateProfile(auth.token, {
-        newPassword: newPassword,
+      const { data: result, error: rpcErr } = await supabase.rpc('fn_change_password', {
+        p_email: auth.email,
+        p_old_password: '',
+        p_new_password: newPassword.trim(),
       });
+      if (rpcErr) throw new Error(rpcErr.message);
       if (result?.ok) {
         Alert.alert('Успіх', 'Пароль змінено успішно');
         setNewPassword('');
@@ -196,7 +234,7 @@ export default function Settings({ navigation }) {
         Alert.alert('Помилка', result?.error || 'Не вдалося змінити пароль');
       }
     } catch (error) {
-      Alert.alert('Помилка', 'Не вдалося змінити пароль');
+      Alert.alert('Помилка', String(error.message || 'Не вдалося змінити пароль'));
     } finally {
       setUpdatingPassword(false);
     }
@@ -211,7 +249,7 @@ export default function Settings({ navigation }) {
         .filter(e => e.type)
         .map(({ type, hours }) => ({ type, hours }));
 
-      const total = parseFloat(totalHours) || 0;
+      const total = Number(totalHours) || 0;
 
       // Update or insert pilot data
       const { error } = await supabase
@@ -220,11 +258,11 @@ export default function Settings({ navigation }) {
           email: auth?.email,
           pib: auth?.pib,
           total_hours: total,
-          flight_hours_by_type: JSON.stringify(flightHoursData),
-          entry_settings: JSON.stringify({
+          flight_hours_by_type: flightHoursData,
+          entry_settings: {
             aircraft_types: selectedAircraftTypes,
             sources: selectedSources,
-          }),
+          },
           updated_at: new Date().toISOString(),
         }, {
           onConflict: 'email'
@@ -254,14 +292,10 @@ export default function Settings({ navigation }) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         {/* Інформація про пілота */}
         <View style={styles.section}>
-          <View style={styles.fieldRow}>
-            <Text style={styles.fieldLabel}>Звання:</Text>
-            <Text style={styles.fieldValue}>{auth?.pib?.split(' ')[0] || '-'}</Text>
-          </View>
-
           <View style={styles.fieldRow}>
             <Text style={styles.fieldLabel}>ПІБ:</Text>
             <Text style={styles.fieldValue}>{auth?.pib || '-'}</Text>
@@ -269,7 +303,7 @@ export default function Settings({ navigation }) {
 
           <View style={styles.fieldRow}>
             <Text style={styles.fieldLabel}>Посада:</Text>
-            <Text style={styles.fieldValue}>-</Text>
+            <Text style={styles.fieldValue}>{userInfo.position || '-'}</Text>
           </View>
         </View>
 
@@ -374,7 +408,9 @@ export default function Settings({ navigation }) {
             <TouchableOpacity
               style={styles.changePasswordBtn}
               onPress={() => setShowPasswordChange(true)}
+              activeOpacity={0.7}
             >
+              <Ionicons name="lock-closed-outline" size={18} color="#555860" style={{ marginRight: 10 }} />
               <Text style={styles.changePasswordBtnText}>Змінити пароль</Text>
             </TouchableOpacity>
           ) : (
@@ -426,11 +462,15 @@ export default function Settings({ navigation }) {
                   style={styles.passwordSaveBtn}
                   onPress={handlePasswordChange}
                   disabled={updatingPassword}
+                  activeOpacity={0.7}
                 >
                   {updatingPassword ? (
-                    <ActivityIndicator size="small" color={LIGHT} />
+                    <ActivityIndicator size="small" color="#555860" />
                   ) : (
-                    <Text style={styles.passwordSaveBtnText}>Змінити</Text>
+                    <>
+                      <Ionicons name="checkmark-outline" size={18} color="#555860" style={{ marginRight: 8 }} />
+                      <Text style={styles.passwordSaveBtnText}>Змінити</Text>
+                    </>
                   )}
                 </TouchableOpacity>
               </View>
@@ -440,15 +480,19 @@ export default function Settings({ navigation }) {
 
         {/* Кнопка збереження */}
         <View style={styles.saveSection}>
-          <TouchableOpacity style={styles.saveBtn} onPress={saveSettings} disabled={saving}>
+          <TouchableOpacity style={styles.saveBtn} onPress={saveSettings} disabled={saving} activeOpacity={0.7}>
             {saving ? (
-              <ActivityIndicator color={LIGHT} />
+              <ActivityIndicator color="#555860" />
             ) : (
-              <Text style={styles.saveBtnText}>ЗБЕРЕГТИ</Text>
+              <>
+                <Ionicons name="checkmark-circle-outline" size={18} color="#555860" style={{ marginRight: 10 }} />
+                <Text style={styles.saveBtnText}>Зберегти</Text>
+              </>
             )}
           </TouchableOpacity>
         </View>
       </ScrollView>
+      </KeyboardAvoidingView>
 
       {/* Modal для вибору типу ПС */}
       <Modal
@@ -606,6 +650,11 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 16,
     marginBottom: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
   },
   fieldRow: {
     flexDirection: 'row',
@@ -639,6 +688,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
     marginBottom: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
   },
   totalHoursLabel: {
     fontFamily: FONT,
@@ -684,6 +738,11 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
   },
   typeText: {
     fontFamily: FONT,
@@ -700,6 +759,12 @@ const styles = StyleSheet.create({
     fontFamily: FONT,
     fontSize: 15,
     textAlign: 'center',
+    backgroundColor: '#fff',
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
   },
   iconBtn: {
     width: 36,
@@ -733,16 +798,25 @@ const styles = StyleSheet.create({
   },
   saveSection: {
     marginTop: 10,
-    marginBottom: 40,
+    marginBottom: 80,
   },
   saveBtn: {
-    backgroundColor: DARK,
+    height: 50,
     borderRadius: 14,
-    paddingVertical: 14,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#D9DBDE',
+    borderWidth: 1,
+    borderColor: '#B0B3B8',
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
   },
   saveBtnText: {
-    color: LIGHT,
+    color: '#555860',
     fontFamily: FONT,
     fontSize: 16,
     fontWeight: '400',
@@ -869,14 +943,25 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   changePasswordBtn: {
-    paddingVertical: 14,
+    height: 50,
+    borderRadius: 14,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#D9DBDE',
+    borderWidth: 1,
+    borderColor: '#B0B3B8',
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
   },
   changePasswordBtnText: {
     fontFamily: FONT,
     fontSize: 16,
     fontWeight: '400',
-    color: '#6B7280',
+    color: '#555860',
   },
   passwordField: {
     marginBottom: 12,
@@ -898,6 +983,11 @@ const styles = StyleSheet.create({
     fontFamily: FONT,
     backgroundColor: '#F9FAFB',
     color: '#111827',
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
   },
   passwordButtons: {
     flexDirection: 'row',
@@ -906,32 +996,46 @@ const styles = StyleSheet.create({
   },
   passwordCancelBtn: {
     flex: 1,
-    height: 44,
-    borderRadius: 8,
+    height: 50,
+    borderRadius: 14,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#F3F4F6',
+    backgroundColor: '#D9DBDE',
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#B0B3B8',
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
   },
   passwordCancelBtnText: {
     fontSize: 16,
     fontFamily: FONT,
     fontWeight: '400',
-    color: '#374151',
+    color: '#555860',
   },
   passwordSaveBtn: {
     flex: 1,
-    height: 44,
-    borderRadius: 8,
+    height: 50,
+    borderRadius: 14,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: DARK,
+    backgroundColor: '#D9DBDE',
+    borderWidth: 1,
+    borderColor: '#B0B3B8',
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
   },
   passwordSaveBtnText: {
     fontSize: 16,
     fontFamily: FONT,
     fontWeight: '400',
-    color: LIGHT,
+    color: '#555860',
   },
 });

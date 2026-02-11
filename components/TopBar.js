@@ -14,7 +14,7 @@ export default function TopBar({ navigation }) {
 
   const onPress = () => {
     if (isAdmin) tabNavigate('AdminSettings');
-    else tabNavigate('Profile', undefined, { token: auth?.token });
+    else tabNavigate('Profile', undefined, {});
   };
 
   return (

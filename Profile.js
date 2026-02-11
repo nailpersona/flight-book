@@ -49,6 +49,12 @@ export default function Profile({ navigation }) {
           />
 
           <ProfileButton
+            icon="bar-chart-outline"
+            title="Підсумки"
+            onPress={() => tabNavigate('FlightSummary')}
+          />
+
+          <ProfileButton
             icon="timer-outline"
             title="Перерви за МУ"
             onPress={() =>
