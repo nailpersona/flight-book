@@ -1,6 +1,6 @@
 import React, { useContext, useEffect, useState } from 'react';
 import {
-  SafeAreaView, View, Text, TouchableOpacity, Alert, StyleSheet,
+  SafeAreaView, View, Text, TouchableOpacity, StyleSheet,
   ScrollView, ActivityIndicator, Modal, FlatList
 } from 'react-native';
 import CustomCalendar from './components/CustomCalendar';
@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { AuthCtx } from './contexts';
 import { getAnnualChecksFromSupabase, updateAnnualCheckDateInSupabase, getAllPilotsFromSupabase } from './supabaseData';
 import { Colors, Shadows, BorderRadius, Spacing, FONT } from './theme';
+import ThemedAlert from './ThemedAlert';
 
 // Soft status colors
 const STATUS = {
@@ -23,7 +24,7 @@ const getStatus = (color) => STATUS[color] || STATUS.gray;
 const CHECK_LABELS = {
   'ТП': 'Техніка пілотування',
   'Захід за приладами': 'Захід за приладами',
-  'ТП_дублюючі': 'ТП за дублюючими приладами',
+  'ТП_дублюючі': 'ТП за дублюючими',
   'ТП з ІВД': 'ТП з ІВД',
   'навігація': 'Навігація',
   'БЗ': 'Бойове застосування',
@@ -111,7 +112,7 @@ export default function AnnualChecks({ navigation, route }) {
       if (!res?.ok) throw new Error(res?.error || 'Помилка');
       setData(res.checks || []);
     } catch (e) {
-      Alert.alert('Помилка', String(e.message || e));
+      ThemedAlert.alert('Помилка', String(e.message || e));
       setData([]);
     } finally {
       setLoading(false);
@@ -152,10 +153,10 @@ export default function AnnualChecks({ navigation, route }) {
       if (result?.ok) {
         loadData();
       } else {
-        Alert.alert('Помилка', result?.error || 'Не вдалося оновити дату');
+        ThemedAlert.alert('Помилка', result?.error || 'Не вдалося оновити дату');
       }
     } catch (_) {
-      Alert.alert('Помилка', 'Не вдалося оновити дату');
+      ThemedAlert.alert('Помилка', 'Не вдалося оновити дату');
     }
   };
 

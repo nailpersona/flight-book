@@ -1,409 +1,367 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  FlatList,
-  StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
-  ActivityIndicator,
-} from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import React, { useState, useEffect } from 'react';
+import { View, Text, FlatList, StyleSheet, KeyboardAvoidingView, Platform, TouchableOpacity, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, FONT, BorderRadius, Spacing, Shadows } from './theme';
 import { supabase } from './supabase';
 
-// Speech recognition — optional native module
-let SpeechModule = null;
-let useSpeechEvent = () => {};
-try {
-  const sr = require('expo-speech-recognition');
-  SpeechModule = sr.ExpoSpeechRecognitionModule;
-  useSpeechEvent = sr.useSpeechRecognitionEvent;
-} catch (_) {}
+export default function ChatScreen({ route, navigation }) {
+  const [view, setView] = useState('documents'); // documents | sections | content
+  const [documents, setDocuments] = useState([]);
+  const [sections, setSections] = useState([]);
+  const [selectedDoc, setSelectedDoc] = useState(null);
+  const [selectedSection, setSelectedSection] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [expandedSections, setExpandedSections] = useState({}); // Track expanded sections
 
-export default function ChatScreen() {
-  const insets = useSafeAreaInsets();
-  const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [recording, setRecording] = useState(false);
-  const [speechAvailable, setSpeechAvailable] = useState(!!SpeechModule);
-  const flatListRef = useRef(null);
-  const inputRef = useRef(null);
+  useEffect(() => {
+    loadDocuments();
+  }, []);
 
-  // --- Speech recognition events (no-op if module missing) ---
-  useSpeechEvent('result', (ev) => {
-    const transcript = ev.results[0]?.transcript || '';
-    if (transcript) setInput(transcript);
-  });
-
-  useSpeechEvent('end', () => setRecording(false));
-  useSpeechEvent('error', () => setRecording(false));
-
-  const toggleRecording = useCallback(async () => {
-    if (!SpeechModule) return;
-
-    if (recording) {
-      SpeechModule.stop();
-      setRecording(false);
-      return;
-    }
-
-    try {
-      const { granted } = await SpeechModule.requestPermissionsAsync();
-      if (!granted) return;
-
-      SpeechModule.start({ lang: 'uk-UA', interimResults: true });
-      setRecording(true);
-    } catch (e) {
-      setSpeechAvailable(false);
-    }
-  }, [recording]);
-
-  // --- Send question ---
-  const sendQuestion = async (text) => {
-    const question = (text || input).trim();
-    if (!question || loading) return;
-
-    const userMsg = { id: Date.now().toString(), role: 'user', text: question };
-    setMessages((prev) => [...prev, userMsg]);
-    setInput('');
+  const loadDocuments = async () => {
+    console.log('Loading documents...');
     setLoading(true);
+    const { data, error } = await supabase
+      .from('guide_documents')
+      .select('*')
+      .order('order_num');
+    console.log('Raw Supabase response:', { data, error });
+    if (!error && data) {
+      setDocuments(data);
+    } else {
+      console.log('Error loading documents:', error);
+      setDocuments([]);
+    }
+    setLoading(false);
+  };
 
-    try {
-      const { data, error } = await supabase.functions.invoke('ask', {
-        body: { question },
-      });
-
-      if (error) throw error;
-
-      const aiMsg = {
-        id: (Date.now() + 1).toString(),
-        role: 'ai',
-        text: data.answer || 'Не вдалося отримати відповідь.',
-        sources: data.sources || [],
-      };
-      setMessages((prev) => [...prev, aiMsg]);
-    } catch (err) {
-      const errMsg = {
-        id: (Date.now() + 1).toString(),
-        role: 'ai',
-        text: 'Помилка при отриманні відповіді. Спробуйте ще раз.',
-        isError: true,
-      };
-      setMessages((prev) => [...prev, errMsg]);
-    } finally {
-      setLoading(false);
+  const loadSections = async (docId) => {
+    console.log('Loading sections for doc:', docId);
+    const { data, error } = await supabase
+      .from('guide_sections')
+      .select('*')
+      .eq('document_id', docId)
+      .is('parent_id', null)
+      .order('order_num');
+    console.log('Sections loaded:', data?.length || 0, error);
+    if (!error && data) {
+      // Load subsections for each section
+      const sectionsWithSubsections = await Promise.all(
+        data.map(async (section) => {
+          const { data: subsections } = await supabase
+            .from('guide_sections')
+            .select('*')
+            .eq('parent_id', section.id)
+            .order('order_num');
+          return { ...section, subsections: subsections || [] };
+        })
+      );
+      setSections(sectionsWithSubsections);
+      setExpandedSections({});
+    } else {
+      console.log('Error loading sections:', error);
     }
   };
 
-  // --- Render ---
-  const renderMessage = ({ item }) => {
-    const isUser = item.role === 'user';
+  const toggleSection = (sectionId) => {
+    setExpandedSections(prev => ({
+      ...prev,
+      [sectionId]: !prev[sectionId]
+    }));
+  };
+
+  const handleDocumentClick = (doc) => {
+    setSelectedDoc(doc);
+    loadSections(doc.id);
+    setView('sections');
+    setSelectedSection(null);
+  };
+
+  const handleSectionClick = (section) => {
+    // If section has subsections, toggle expand
+    if (section.subsections && section.subsections.length > 0) {
+      toggleSection(section.id);
+    } else if (section.content) {
+      // Section has content - show it
+      setSelectedSection(section);
+      setView('content');
+    }
+  };
+
+  const handleBack = () => {
+    if (view === 'content') {
+      setView('sections');
+      setSelectedSection(null);
+    } else if (view === 'sections') {
+      setView('documents');
+      setSelectedDoc(null);
+      setSections([]);
+    }
+  };
+
+  const getTitle = () => {
+    if (view === 'documents') return 'Керівні документи';
+    if (view === 'sections') return selectedDoc?.title_short || 'Керівні документи';
+    if (view === 'content') return selectedSection?.title || 'Відповідь';
+    return 'Керівні документи';
+  };
+
+  const renderDocument = ({ item: doc }) => (
+    <TouchableOpacity style={styles.docCard} onPress={() => handleDocumentClick(doc)}>
+      <Ionicons name="book-outline" size={28} color={Colors.textTertiary} />
+      <View style={styles.docInfo}>
+        <Text style={styles.docTitle}>{doc.title_short}</Text>
+        <Text style={styles.docSubtitle}>{doc.title}</Text>
+      </View>
+      <Ionicons name="chevron-forward" size={20} color={Colors.textTertiary} />
+    </TouchableOpacity>
+  );
+
+  const renderSubsection = (subsection) => (
+    <TouchableOpacity
+      style={styles.subsectionCard}
+      onPress={() => {
+        setSelectedSection(subsection);
+        setView('content');
+      }}
+    >
+      <Text style={styles.subsectionTitle}>{subsection.title}</Text>
+    </TouchableOpacity>
+  );
+
+  const renderSection = ({ item: section }) => {
+    const isExpanded = expandedSections[section.id];
+    const hasSubsections = section.subsections && section.subsections.length > 0;
+    const hasContent = section.content && section.content.length > 0;
+
     return (
-      <View style={[s.msgRow, isUser && s.msgRowUser]}>
-        {!isUser && (
-          <View style={s.avatar}>
-            <Ionicons name="sparkles" size={16} color={Colors.textInverse} />
+      <View style={styles.sectionWrapper}>
+        <TouchableOpacity
+          style={styles.sectionCard}
+          onPress={() => handleSectionClick(section)}
+        >
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>
+              {section.title}
+            </Text>
+          </View>
+        </TouchableOpacity>
+
+        {isExpanded && hasSubsections && (
+          <View style={styles.subsectionsList}>
+            {section.subsections.map((sub, i) => (
+              <View key={sub.id || i}>
+                {renderSubsection(sub)}
+              </View>
+            ))}
           </View>
         )}
-        <View
-          style={[
-            s.bubble,
-            isUser ? s.bubbleUser : s.bubbleAi,
-            item.isError && s.bubbleError,
-          ]}
-        >
-          <Text style={[s.msgText, isUser && s.msgTextUser]}>{item.text}</Text>
-          {item.sources && item.sources.length > 0 && (
-            <View style={s.sourcesWrap}>
-              <Text style={s.sourcesLabel}>Джерела:</Text>
-              {[...new Set(item.sources.map((src) => src.document))].map(
-                (doc, i) => (
-                  <Text key={i} style={s.sourceItem}>
-                    {doc}
-                  </Text>
-                )
-              )}
-            </View>
-          )}
-        </View>
       </View>
     );
   };
 
-  const renderEmpty = () => (
-    <View style={s.emptyWrap}>
-      <Ionicons name="chatbubble-outline" size={48} color={Colors.textTertiary} />
-      <Text style={s.emptyTitle}>Задайте питання</Text>
-      <Text style={s.emptySubtitle}>
-        КБП, КЛПВ, ПЛВР, ПВП ДАУ та інші
-      </Text>
-    </View>
-  );
-
-  const bottomPadding = Math.max(insets.bottom, 16);
+  const renderContent = () => {
+    if (!selectedSection?.content) return null;
+    return (
+      <View style={styles.contentContainer}>
+        <ScrollView style={styles.contentScroll} contentContainerStyle={styles.contentScrollContent}>
+          <Text style={styles.contentText}>{selectedSection.content}</Text>
+        </ScrollView>
+      </View>
+    );
+  };
 
   return (
-    <KeyboardAvoidingView
-      style={s.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 80}
-    >
-      <FlatList
-        ref={flatListRef}
-        data={messages}
-        renderItem={renderMessage}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={[
-          s.list,
-          messages.length === 0 && s.listEmpty,
-        ]}
-        ListEmptyComponent={renderEmpty}
-        onContentSizeChange={() => {
-          if (messages.length > 0) {
-            flatListRef.current?.scrollToEnd({ animated: true });
-          }
-        }}
-      />
-
-      {loading && (
-        <View style={s.typingRow}>
-          <View style={s.avatar}>
-            <Ionicons name="sparkles" size={16} color={Colors.textInverse} />
-          </View>
-          <View style={s.typingBubble}>
-            <ActivityIndicator size="small" color={Colors.textSecondary} />
-            <Text style={s.typingText}>Шукаю відповідь...</Text>
-          </View>
-        </View>
-      )}
-
-      <View style={[s.inputRow, { paddingBottom: bottomPadding }]}>
-        {speechAvailable && (
-          <TouchableOpacity
-            style={[s.micBtn, recording && s.micBtnActive]}
-            onPress={toggleRecording}
-            activeOpacity={0.7}
-          >
-            <Ionicons
-              name={recording ? 'stop' : 'mic'}
-              size={22}
-              color={recording ? Colors.error : Colors.textSecondary}
-            />
+    <View style={styles.container}>
+      <View style={styles.header}>
+        {view !== 'documents' && (
+          <TouchableOpacity style={styles.backBtn} onPress={handleBack}>
+            <Text style={styles.backText}>← Назад</Text>
           </TouchableOpacity>
         )}
-        <TextInput
-          style={s.input}
-          value={input}
-          onChangeText={setInput}
-          placeholder={recording ? 'Говоріть...' : 'Задайте питання...'}
-          placeholderTextColor={Colors.textTertiary}
-          multiline
-          maxLength={500}
-          editable={!loading}
-          onSubmitEditing={() => sendQuestion()}
-          blurOnSubmit
-        />
-        <TouchableOpacity
-          style={[s.sendBtn, (!input.trim() || loading) && s.sendBtnDisabled]}
-          onPress={() => sendQuestion()}
-          disabled={!input.trim() || loading}
-          activeOpacity={0.7}
-        >
-          <Ionicons
-            name="send"
-            size={20}
-            color={!input.trim() || loading ? Colors.textTertiary : Colors.textInverse}
-          />
-        </TouchableOpacity>
+        <View style={styles.titleContainer}>
+          <Text style={styles.title}>{getTitle()}</Text>
+          {view === 'documents' && <View style={styles.placeholder} />}
+        </View>
       </View>
-    </KeyboardAvoidingView>
+
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <Text style={styles.loadingText}>Завантаження...</Text>
+        </View>
+      ) : view === 'documents' ? (
+        <FlatList
+          data={documents}
+          renderItem={renderDocument}
+          keyExtractor={(item) => item.id.toString()}
+          contentContainerStyle={styles.list}
+        />
+      ) : view === 'sections' ? (
+        <FlatList
+          data={sections}
+          renderItem={renderSection}
+          keyExtractor={(item) => item.id.toString()}
+          contentContainerStyle={styles.list}
+        />
+      ) : (
+        <View style={styles.contentWrapper}>
+          {renderContent()}
+        </View>
+      )}
+    </View>
   );
 }
 
-const s = StyleSheet.create({
+const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.bgTertiary,
   },
-  list: {
-    padding: Spacing.md,
-    paddingBottom: Spacing.sm,
-  },
-  listEmpty: {
-    flex: 1,
-    justifyContent: 'center',
-  },
-
-  // Messages
-  msgRow: {
+  header: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: Spacing.md,
-    gap: Spacing.sm,
-  },
-  msgRowUser: {
-    justifyContent: 'flex-end',
-  },
-  avatar: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: Colors.primary,
     alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 2,
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
   },
-  bubble: {
-    maxWidth: '80%',
-    borderRadius: BorderRadius.lg,
-    padding: Spacing.md,
-    ...Shadows.small,
+  backBtn: {
+    minWidth: 60,
   },
-  bubbleUser: {
-    backgroundColor: Colors.primary,
-    borderBottomRightRadius: 4,
-  },
-  bubbleAi: {
-    backgroundColor: Colors.bgPrimary,
-    borderBottomLeftRadius: 4,
-  },
-  bubbleError: {
-    backgroundColor: '#FEF2F2',
-  },
-  msgText: {
+  backText: {
     fontFamily: FONT,
     fontSize: 15,
     fontWeight: '400',
     color: Colors.textPrimary,
-    lineHeight: 22,
   },
-  msgTextUser: {
-    color: Colors.textInverse,
-  },
-
-  // Sources
-  sourcesWrap: {
-    marginTop: Spacing.sm,
-    paddingTop: Spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: Colors.borderLight,
-  },
-  sourcesLabel: {
+  title: {
     fontFamily: FONT,
-    fontSize: 12,
+    fontSize: 16,
     fontWeight: '400',
-    color: Colors.textTertiary,
-    marginBottom: 4,
+    color: Colors.textPrimary,
   },
-  sourceItem: {
-    fontFamily: FONT,
-    fontSize: 12,
-    fontWeight: '400',
-    color: Colors.textSecondary,
-    marginLeft: 8,
-    lineHeight: 18,
+  titleContainer: {
+    flex: 1,
+    alignItems: 'center',
   },
-
-  // Typing indicator
-  typingRow: {
+  placeholder: {
+    width: 60,
+  },
+  list: {
+    padding: Spacing.md,
+  },
+  docCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.sm,
+    paddingVertical: 14,
     paddingHorizontal: Spacing.md,
-    paddingBottom: Spacing.sm,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    marginHorizontal: Spacing.md,
+    marginVertical: 4,
   },
-  typingBubble: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    backgroundColor: Colors.bgPrimary,
-    borderRadius: BorderRadius.lg,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    ...Shadows.small,
+  docInfo: {
+    flex: 1,
+    marginLeft: 12,
   },
-  typingText: {
+  docTitle: {
+    fontFamily: FONT,
+    fontSize: 15,
+    fontWeight: '400',
+    color: Colors.textPrimary,
+  },
+  docSubtitle: {
     fontFamily: FONT,
     fontSize: 13,
     fontWeight: '400',
-    color: Colors.textSecondary,
+    color: Colors.textTertiary,
+    marginTop: 2,
   },
-
-  // Input
-  inputRow: {
+  sectionWrapper: {
+    marginBottom: 4,
+  },
+  sectionCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    marginHorizontal: Spacing.md,
+    overflow: 'hidden',
+  },
+  sectionCardWithContent: {
+    backgroundColor: '#F8F9FA',
+  },
+  sectionHeader: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
-    paddingTop: Spacing.md,
+    alignItems: 'center',
+    paddingVertical: 14,
     paddingHorizontal: Spacing.md,
-    backgroundColor: Colors.bgPrimary,
-    borderTopWidth: 1,
-    borderTopColor: Colors.borderLight,
-    gap: Spacing.sm,
   },
-  input: {
-    flex: 1,
-    minHeight: 44,
-    maxHeight: 100,
-    borderRadius: BorderRadius.md,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    backgroundColor: Colors.bgTertiary,
+  sectionTitle: {
     fontFamily: FONT,
     fontSize: 15,
     fontWeight: '400',
     color: Colors.textPrimary,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    flex: 1,
   },
-  sendBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: Colors.primary,
+  sectionTitleWithContent: {
+    color: Colors.primary,
+  },
+  subsectionsList: {
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+    backgroundColor: '#FAFAFA',
+  },
+  subsectionCard: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: Spacing.md,
+    marginLeft: Spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
   },
-  sendBtnDisabled: {
-    backgroundColor: Colors.bgTertiary,
-  },
-  micBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: Colors.bgTertiary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  micBtnActive: {
-    backgroundColor: '#FEF2F2',
-    borderColor: Colors.error,
-  },
-
-  // Empty state
-  emptyWrap: {
-    alignItems: 'center',
-    paddingHorizontal: Spacing.xl,
-  },
-  emptyTitle: {
-    fontFamily: FONT,
-    fontSize: 18,
-    fontWeight: '400',
-    color: Colors.textPrimary,
-    marginTop: Spacing.md,
-  },
-  emptySubtitle: {
+  subsectionTitle: {
     fontFamily: FONT,
     fontSize: 14,
     fontWeight: '400',
     color: Colors.textSecondary,
-    marginTop: Spacing.xs,
-    textAlign: 'center',
+    flex: 1,
+  },
+  contentWrapper: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
+  contentContainer: {
+    flex: 1,
+  },
+  contentScroll: {
+    flex: 1,
+  },
+  contentScrollContent: {
+    padding: Spacing.md,
+    paddingBottom: 40,
+  },
+  contentText: {
+    fontFamily: FONT,
+    fontSize: 14,
+    fontWeight: '400',
+    color: Colors.textPrimary,
+    lineHeight: 22,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 60,
+  },
+  loadingText: {
+    fontFamily: FONT,
+    fontSize: 16,
+    fontWeight: '400',
+    color: Colors.textTertiary,
+    marginTop: 12,
   },
 });

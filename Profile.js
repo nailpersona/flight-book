@@ -4,21 +4,22 @@ import {
   View,
   Text,
   TouchableOpacity,
-  Alert,
   StyleSheet,
   SafeAreaView,
   ScrollView,
+  Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { AuthCtx } from './contexts';
 import { Colors, Shadows, BorderRadius, Spacing, FONT } from './theme';
 import { TabNavigationContext } from './FixedTabNavigator';
+import ThemedAlert from './ThemedAlert';
 
 // Кнопка профілю — єдиний стиль для всіх
-const ProfileButton = ({ title, icon, onPress, style }) => (
-  <TouchableOpacity onPress={onPress} activeOpacity={0.7} style={[styles.btn, style]}>
-    <Ionicons name={icon} size={18} color="#555860" style={styles.btnIcon} />
-    <Text style={styles.btnText}>{title}</Text>
+const ProfileButton = ({ title, icon, onPress, style, dark }) => (
+  <TouchableOpacity onPress={onPress} activeOpacity={0.7} style={[styles.btn, style, dark && styles.btnDark]}>
+    <Ionicons name={icon} size={18} color={dark ? '#FFFFFF' : '#555860'} style={styles.btnIcon} />
+    <Text style={[styles.btnText, dark && styles.btnTextDark]}>{title}</Text>
   </TouchableOpacity>
 );
 
@@ -27,7 +28,7 @@ export default function Profile({ navigation }) {
   const { tabNavigate } = useContext(TabNavigationContext);
 
   const handleLogout = () => {
-    Alert.alert('Вихід', 'Ви впевнені що хочете вийти?', [
+    ThemedAlert.alert('Вихід', 'Ви впевнені що хочете вийти?', [
       { text: 'Скасувати', style: 'cancel' },
       {
         text: 'Вийти',
@@ -104,6 +105,15 @@ export default function Profile({ navigation }) {
             onPress={() => tabNavigate('Settings')}
           />
 
+          {auth?.role === 'admin' && (
+            <ProfileButton
+              icon="settings-outline"
+              title="Адмін панель"
+              onPress={() => tabNavigate('AdminPanel')}
+              dark
+            />
+          )}
+
           <ProfileButton
             icon="log-out-outline"
             title="Вийти"
@@ -154,6 +164,13 @@ const styles = StyleSheet.create({
     fontFamily: FONT,
     fontSize: 16,
     fontWeight: '400',
+  },
+  btnTextDark: {
+    color: '#FFFFFF',
+  },
+  btnDark: {
+    backgroundColor: '#111827',
+    borderColor: '#111827',
   },
   btnLogout: {
     borderWidth: 1,

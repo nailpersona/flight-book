@@ -1,0 +1,223 @@
+================================================================================
+МУ BREAK PERIODS DATA - EXTRACTION FROM EXCEL FILE
+================================================================================
+
+File: C:\Users\fujitsu\Desktop\fly-book\docs\Облік нальоту.xlsx
+Sheet: "Стан БГ" (Combat Readiness Status)
+Location: Rows 8-10, Columns I-T (9-20)
+
+================================================================================
+CELL REFERENCES
+================================================================================
+
+Row 8: Class 1 (1 клас)
+Row 9: Class 2 (2 клас)
+Row 10: Class 3 (3 клас)
+
+DAYTIME (ДЕНЬ):
+  Column I (9):  ДПМУ days
+  Column J (10): ДПМУ months
+  Column K (11): ДСМУ days
+  Column L (12): ДСМУ months
+  Column M (13): ДВМП days
+  Column N (14): ДВМП months
+
+NIGHTTIME (НІЧ):
+  Column O (15): НПМУ days
+  Column P (16): НПМУ months
+  Column Q (17): НСМУ days
+  Column R (18): НСМУ months
+  Column S (19): НВМП days
+  Column T (20): НВМП months
+
+================================================================================
+COMPLETE DATA TABLE
+================================================================================
+
+CLASS 1 PILOT:
+  DAYTIME (ДЕНЬ):
+    ДПМУ: 107 days = 3.5 months
+    ДСМУ: 92 days = 3.0 months
+    ДВМП: 77 days = 2.5 months
+
+  NIGHTTIME (НІЧ):
+    НПМУ: 92 days = 3.0 months
+    НСМУ: 77 days = 2.5 months
+    НВМП: 61 days = 2.0 months
+
+CLASS 2 PILOT:
+  DAYTIME (ДЕНЬ):
+    ДПМУ: 92 days = 3.0 months
+    ДСМУ: 77 days = 2.5 months
+    ДВМП: 61 days = 2.0 months
+
+  NIGHTTIME (НІЧ):
+    НПМУ: 77 days = 2.5 months
+    НСМУ: 61 days = 2.0 months
+    НВМП: 46 days = 1.5 months
+
+CLASS 3 PILOT:
+  DAYTIME (ДЕНЬ):
+    ДПМУ: 76 days = 2.5 months
+    ДСМУ: 61 days = 2.0 months
+    ДВМП: 46 days = 1.5 months
+
+  NIGHTTIME (НІЧ):
+    НПМУ: 61 days = 2.0 months
+    НСМУ: 46 days = 1.5 months
+    НВМП: 30 days = 1.0 months
+
+================================================================================
+SUMMARY TABLE (in days)
+================================================================================
+
+Class | ДПМУ | ДСМУ | ДВМП | НПМУ | НСМУ | НВМП
+------|------|------|------|------|------|------
+  1   |  107 |   92 |   77 |   92 |   77 |   61
+  2   |   92 |   77 |   61 |   77 |   61 |   46
+  3   |   76 |   61 |   46 |   61 |   46 |   30
+
+================================================================================
+NOMENCLATURE
+================================================================================
+
+МУ (Метеоумови) - Meteorological Conditions
+
+DAYTIME (ДЕНЬ):
+  ДПМУ - Denni Prosti Meteorologichni Umovy (Daytime Simple Weather Conditions)
+  ДСМУ - Denni Skladni Meteorologichni Umovy (Daytime Complex Weather Conditions)
+  ДВМП - Denni V'yazhkovi Meteorologichni Poysi (Daytime Instrument Meteorological Conditions)
+
+NIGHTTIME (НІЧ):
+  НПМУ - Nichni Prosti Meteorologichni Umovy (Nighttime Simple Weather Conditions)
+  НСМУ - Nichni Skladni Meteorologichni Umovy (Nighttime Complex Weather Conditions)
+  НВМП - Nichni V'yazhkovi Meteorologichni Poysi (Nighttime Instrument Meteorological Conditions)
+
+================================================================================
+KEY OBSERVATIONS
+================================================================================
+
+1. ALL SIX МУ TYPES ARE PRESENT:
+   - Found all 6 МУ types mentioned in the system (ДПМУ, ДСМУ, ДВМП, НПМУ, НСМУ, НВМП)
+   - Data exists for classes 1, 2, and 3 only (no class 4 or 5 data)
+
+2. PATTERN:
+   - Higher pilot class = longer allowed break periods
+   - Daytime breaks are generally longer than nighttime breaks
+   - More complex conditions (СМУ, ВМП) have shorter break periods than simple (ПМУ)
+
+3. HIERARCHY OF BREAK PERIODS:
+   - Longest breaks: ДПМУ (107 days for class 1)
+   - Shortest breaks: НВМП (30 days for class 3)
+
+4. PRACTICAL USE IN SHEETS:
+   - The "Main" sheet shows flight records with МУ types (ДПМУ, ДСМУ, ДВМП)
+   - The "Підсумки" sheet mentions МУ restoration (відновився за МУ ДСМУ)
+   - These values are used to track pilot currency and determine when re-qualification is needed
+
+5. SOURCE AUTHORITY:
+   - These values are in the operational spreadsheet currently used
+   - They represent practical, in-use standards
+   - May differ from КБП documents but reflect actual operational practice
+
+================================================================================
+SQL INSERT STATEMENTS FOR SUPABASE
+================================================================================
+
+-- Class 1 pilots
+INSERT INTO break_periods_lp (pilot_class, lp_type_code, break_days, source_document, notes)
+VALUES (1, 'дпму', 107, 'Облік нальоту.xlsx', 'Daytime simple weather conditions');
+
+INSERT INTO break_periods_lp (pilot_class, lp_type_code, break_days, source_document, notes)
+VALUES (1, 'дсму', 92, 'Облік нальоту.xlsx', 'Daytime complex weather conditions');
+
+INSERT INTO break_periods_lp (pilot_class, lp_type_code, break_days, source_document, notes)
+VALUES (1, 'двмп', 77, 'Облік нальоту.xlsx', 'Daytime instrument conditions');
+
+INSERT INTO break_periods_lp (pilot_class, lp_type_code, break_days, source_document, notes)
+VALUES (1, 'нпму', 92, 'Облік нальоту.xlsx', 'Nighttime simple weather conditions');
+
+INSERT INTO break_periods_lp (pilot_class, lp_type_code, break_days, source_document, notes)
+VALUES (1, 'нсму', 77, 'Облік нальоту.xlsx', 'Nighttime complex weather conditions');
+
+INSERT INTO break_periods_lp (pilot_class, lp_type_code, break_days, source_document, notes)
+VALUES (1, 'нвмп', 61, 'Облік нальоту.xlsx', 'Nighttime instrument conditions');
+
+-- Class 2 pilots
+INSERT INTO break_periods_lp (pilot_class, lp_type_code, break_days, source_document, notes)
+VALUES (2, 'дпму', 92, 'Облік нальоту.xlsx', 'Daytime simple weather conditions');
+
+INSERT INTO break_periods_lp (pilot_class, lp_type_code, break_days, source_document, notes)
+VALUES (2, 'дсму', 77, 'Облік нальоту.xlsx', 'Daytime complex weather conditions');
+
+INSERT INTO break_periods_lp (pilot_class, lp_type_code, break_days, source_document, notes)
+VALUES (2, 'двмп', 61, 'Облік нальоту.xlsx', 'Daytime instrument conditions');
+
+INSERT INTO break_periods_lp (pilot_class, lp_type_code, break_days, source_document, notes)
+VALUES (2, 'нпму', 77, 'Облік нальоту.xlsx', 'Nighttime simple weather conditions');
+
+INSERT INTO break_periods_lp (pilot_class, lp_type_code, break_days, source_document, notes)
+VALUES (2, 'нсму', 61, 'Облік нальоту.xlsx', 'Nighttime complex weather conditions');
+
+INSERT INTO break_periods_lp (pilot_class, lp_type_code, break_days, source_document, notes)
+VALUES (2, 'нвмп', 46, 'Облік нальоту.xlsx', 'Nighttime instrument conditions');
+
+-- Class 3 pilots
+INSERT INTO break_periods_lp (pilot_class, lp_type_code, break_days, source_document, notes)
+VALUES (3, 'дпму', 76, 'Облік нальоту.xlsx', 'Daytime simple weather conditions');
+
+INSERT INTO break_periods_lp (pilot_class, lp_type_code, break_days, source_document, notes)
+VALUES (3, 'дсму', 61, 'Облік нальоту.xlsx', 'Daytime complex weather conditions');
+
+INSERT INTO break_periods_lp (pilot_class, lp_type_code, break_days, source_document, notes)
+VALUES (3, 'двмп', 46, 'Облік нальоту.xlsx', 'Daytime instrument conditions');
+
+INSERT INTO break_periods_lp (pilot_class, lp_type_code, break_days, source_document, notes)
+VALUES (3, 'нпму', 61, 'Облік нальоту.xlsx', 'Nighttime simple weather conditions');
+
+INSERT INTO break_periods_lp (pilot_class, lp_type_code, break_days, source_document, notes)
+VALUES (3, 'нсму', 46, 'Облік нальоту.xlsx', 'Nighttime complex weather conditions');
+
+INSERT INTO break_periods_lp (pilot_class, lp_type_code, break_days, source_document, notes)
+VALUES (3, 'нвмп', 30, 'Облік нальоту.xlsx', 'Nighttime instrument conditions');
+
+================================================================================
+JSON FORMAT
+================================================================================
+
+{
+  "day": {
+    "1": {
+      "дпму": {"days": 107, "months": "3,5"},
+      "дсму": {"days": 92, "months": "3,0"},
+      "двмп": {"days": 77, "months": "2,5"}
+    },
+    "2": {
+      "дпму": {"days": 92, "months": "3,0"},
+      "дсму": {"days": 77, "months": "2,5"},
+      "двмп": {"days": 61, "months": "2,0"}
+    },
+    "3": {
+      "дпму": {"days": 76, "months": "2,5"},
+      "дсму": {"days": 61, "months": "2"},
+      "двмп": {"days": 46, "months": "1,5"}
+    }
+  },
+  "night": {
+    "1": {
+      "нпму": {"days": 92, "months": "3,0"},
+      "нсму": {"days": 77, "months": "2,5"},
+      "нвмп": {"days": 61, "months": "2,0"}
+    },
+    "2": {
+      "нпму": {"days": 77, "months": "2,5"},
+      "нсму": {"days": 61, "months": "2,0"},
+      "нвмп": {"days": 46, "months": "1,5"}
+    },
+    "3": {
+      "нпму": {"days": 61, "months": "2"},
+      "нсму": {"days": 46, "months": "1,5"},
+      "нвмп": {"days": 30, "months": "1"}
+    }
+  }
+}

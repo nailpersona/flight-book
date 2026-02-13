@@ -38,7 +38,7 @@ export default function CommissionPage() {
           {/* ЛЛК/УМО */}
           {commission['ЛЛК/УМО'] && (
             <div className={s.card} style={{ marginBottom: 12 }}>
-              <div className={s.sectionHeader}><span className={s.sectionTitle}>ЛЛК / УМО</span></div>
+              <div className={s.sectionHeader}><span className={s.sectionTitle}>ЛЛК / ПМО</span></div>
               <table className={s.table}>
                 <tbody>
                   {commission['ЛЛК/УМО'].llk && (
@@ -50,7 +50,7 @@ export default function CommissionPage() {
                   )}
                   {commission['ЛЛК/УМО'].umo && (
                     <tr>
-                      <td>УМО</td>
+                      <td>ПМО</td>
                       <td>{commission['ЛЛК/УМО'].umo.date}</td>
                       <td><span className={s.statusDot} style={{background: COLOR_MAP[commission['ЛЛК/УМО'].umo.color]}} /></td>
                     </tr>

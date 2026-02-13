@@ -1,12 +1,13 @@
 import React, { useContext, useEffect, useState } from 'react';
 import {
-  SafeAreaView, View, Text, TouchableOpacity, Alert, StyleSheet,
+  SafeAreaView, View, Text, TouchableOpacity, StyleSheet,
   ScrollView, ActivityIndicator, Modal, FlatList
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { AuthCtx } from './contexts';
 import { getBreaksDataFromSupabase, getAllPilotsFromSupabase } from './supabaseData';
 import { Colors, Shadows, BorderRadius, Spacing, FONT } from './theme';
+import ThemedAlert from './ThemedAlert';
 
 // Soft status colors — muted pastel tones
 const STATUS = {
@@ -83,7 +84,7 @@ export default function BreaksMU({ route, navigation }) {
       if (!res?.ok) throw new Error(res?.error || 'Помилка');
       setData(res.data || {});
     } catch (e) {
-      Alert.alert('Помилка', String(e.message || e));
+      ThemedAlert.alert('Помилка', String(e.message || e));
       setData({});
     } finally {
       setLoading(false);

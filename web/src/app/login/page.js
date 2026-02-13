@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { IoLogInOutline, IoEyeOutline, IoEyeOffOutline } from 'react-icons/io5';
 import { useAuth } from '../../lib/auth';
 import { supabase } from '../../lib/supabase';
 import styles from './page.module.css';
@@ -88,12 +89,17 @@ export default function LoginPage() {
               className={styles.eyeBtn}
               onClick={() => setShowPass((s) => !s)}
             >
-              {showPass ? '\u{1F648}' : '\u{1F441}\uFE0F'}
+              {showPass ? <IoEyeOffOutline size={20} /> : <IoEyeOutline size={20} />}
             </button>
           </div>
 
           <button type="submit" className={styles.btn} disabled={busy}>
-            {busy ? <div className={styles.spinner} /> : <span className={styles.btnText}>Увійти</span>}
+            {busy ? <div className={styles.spinner} /> : (
+              <>
+                <span className={styles.btnIcon}><IoLogInOutline size={18} /></span>
+                <span className={styles.btnText}>Увійти</span>
+              </>
+            )}
           </button>
         </div>
       </form>

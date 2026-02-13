@@ -44,7 +44,22 @@
       "Bash(pip install:*)",
       "Bash(ls:*)",
       "Bash(npm run build:*)",
-      "Bash(npx next dev:*)"
+      "Bash(npx next dev:*)",
+      "Bash(npx vercel:*)",
+      "Bash(taskkill:*)",
+      "Bash(netstat:*)",
+      "Bash(node:*)",
+      "Bash(supabase:*)",
+      "Bash(pip show:*)",
+      "Bash(chcp:*)",
+      "Bash(Get-ChildItem \"C:\\\\Users\\\\fujitsu\\\\Desktop\\\\fly-book\\\\supabase\\\\migrations\" -Recurse)",
+      "Bash(Select-Object:*)",
+      "Bash(npx supabase db remote tables list:*)",
+      "Bash(cat:*)",
+      "Bash(npx supabase functions deploy:*)",
+      "Bash(npx supabase link:*)",
+      "Bash(type section_iii_chapter_*.sql section_iv_chapter_*.sql)",
+      "Bash(grep:*)"
     ]
   }
 }

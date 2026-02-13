@@ -27,9 +27,10 @@ export async function getBaseUrl() {
     console.warn('Помилка читання webAppUrl з AsyncStorage:', error);
   }
 
-  // Fallback до app.json
+  // Fallback до environment variable або app.json extra
   const extra = readExtra();
-  const url = (extra && extra.webAppUrl) ? String(extra.webAppUrl).trim() : '';
+  const url = (extra && extra.webAppUrl) ? String(extra.webAppUrl).trim() :
+    process.env.EXPO_PUBLIC_API_URL || '';
   return url;
 }
 

@@ -1,6 +1,6 @@
 import React, { useContext, useEffect, useState } from 'react';
 import {
-  SafeAreaView, View, Text, TouchableOpacity, Alert, StyleSheet,
+  SafeAreaView, View, Text, TouchableOpacity, StyleSheet,
   ScrollView, ActivityIndicator, Modal, FlatList
 } from 'react-native';
 import CustomCalendar from './components/CustomCalendar';
@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { AuthCtx } from './contexts';
 import { getBreaksDataFromSupabase, getAllPilotsFromSupabase, updateCommissionDateInSupabase } from './supabaseData';
 import { Colors, Shadows, BorderRadius, Spacing, FONT } from './theme';
+import ThemedAlert from './ThemedAlert';
 
 // Soft status colors
 const STATUS = {
@@ -99,7 +100,7 @@ const CommissionTable = ({ navigation, route }) => {
       if (!res?.ok) throw new Error(res?.error || 'Помилка');
       setData(res.data || {});
     } catch (e) {
-      Alert.alert('Помилка', String(e.message || e));
+      ThemedAlert.alert('Помилка', String(e.message || e));
       setData({});
     } finally {
       setLoading(false);
@@ -141,10 +142,10 @@ const CommissionTable = ({ navigation, route }) => {
       if (result?.ok) {
         loadData();
       } else {
-        Alert.alert('Помилка', result?.error || 'Не вдалося оновити дату');
+        ThemedAlert.alert('Помилка', result?.error || 'Не вдалося оновити дату');
       }
     } catch (_) {
-      Alert.alert('Помилка', 'Не вдалося оновити дату');
+      ThemedAlert.alert('Помилка', 'Не вдалося оновити дату');
     }
   };
 
@@ -221,7 +222,7 @@ const CommissionTable = ({ navigation, route }) => {
               <View style={{ width: 28 }} />
             </View>
             <View style={styles.llkUmoLabelGroup}>
-              <Text style={styles.llkUmoHeaderLabel}>УМО</Text>
+              <Text style={styles.llkUmoHeaderLabel}>ПМО</Text>
               <View style={{ width: 28 }} />
             </View>
           </View>

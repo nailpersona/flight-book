@@ -1,6 +1,6 @@
 'use client';
 import { useRouter } from 'next/navigation';
-import { IoListOutline, IoBarChartOutline, IoTimerOutline, IoAirplaneOutline, IoDocumentTextOutline, IoCalendarOutline, IoSettingsOutline, IoLogOutOutline } from 'react-icons/io5';
+import { IoListOutline, IoBarChartOutline, IoTimerOutline, IoAirplaneOutline, IoDocumentTextOutline, IoCalendarOutline, IoSettingsOutline, IoGridOutline, IoLogOutOutline, IoSettings as IoAdminOutline } from 'react-icons/io5';
 import { useAuth } from '../../../lib/auth';
 import s from '../../../components/shared.module.css';
 
@@ -37,6 +37,12 @@ export default function ProfilePage() {
             </button>
           );
         })}
+        {auth?.role === 'admin' && (
+          <button className={s.menuBtn} style={{ width: '80%', justifyContent: 'center', background: '#D9DBDE', borderColor: '#3B82F6', color: '#555860' }} onClick={() => router.push('/tabs/admin-settings')}>
+            <span className={s.menuBtnIcon} style={{ color: '#555860' }}><IoAdminOutline size={18} /></span>
+            Адмін панель
+          </button>
+        )}
         <button className={s.menuBtn} style={{ width: '80%', justifyContent: 'center', background: '#D9DBDE', borderColor: '#E8B4B4', color: '#555860' }} onClick={handleLogout}>
           <span className={s.menuBtnIcon} style={{ color: '#555860' }}><IoLogOutOutline size={18} /></span>
           Вийти

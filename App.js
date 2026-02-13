@@ -15,6 +15,8 @@ import FixedTabNavigator from './FixedTabNavigator';
 import { Colors, FONT } from './theme';
 // Контексти
 import { AuthCtx, InboxBadgeCtx, rootNavigationRef } from './contexts';
+// ThemedAlert
+import { ThemedAlertComponent } from './ThemedAlert';
 
 const Stack = createNativeStackNavigator();
 
@@ -114,6 +116,7 @@ export default function App() {
           barStyle={Platform.OS === 'ios' ? 'dark-content' : 'light-content'}
           backgroundColor={Colors.primary}
         />
+        <ThemedAlertComponent />
         <Stack.Navigator
           initialRouteName={auth?.userId ? 'Tabs' : 'Login'}
           screenOptions={{

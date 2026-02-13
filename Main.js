@@ -1,7 +1,7 @@
 // Main.js — сторінка записів
 import React, { useContext, useEffect, useMemo, useState } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, Alert, ScrollView,
+  View, Text, TextInput, TouchableOpacity, ScrollView,
   ActivityIndicator, StyleSheet, KeyboardAvoidingView, Platform, SafeAreaView,
   Modal, FlatList,
 } from 'react-native';
@@ -11,6 +11,7 @@ import { AuthCtx } from './contexts';
 import { supabase } from './supabase';
 import { Colors, Shadows, BorderRadius, Spacing, FONT } from './theme';
 import { TabNavigationContext } from './FixedTabNavigator';
+import ThemedAlert from './ThemedAlert';
 
 // ─── Утиліти ───
 
@@ -47,9 +48,12 @@ function toHhMmSs(input) {
 const PrimaryButton = ({ title, onPress, style, loading }) => (
   <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={[s.btn, s.btnPrimary, style]} disabled={loading}>
     {loading ? (
-      <ActivityIndicator color={Colors.textInverse} size="small" />
+      <ActivityIndicator color="#555860" size="small" />
     ) : (
-      <Text style={s.btnText}>{title}</Text>
+      <>
+        <Ionicons name="add-circle-outline" size={18} color="#555860" style={s.btnIcon} />
+        <Text style={s.btnText}>{title}</Text>
+      </>
     )}
   </TouchableOpacity>
 );
@@ -422,7 +426,7 @@ function FlightFeedbackModal({ visible, data, onClose }) {
 
       onClose();
     } catch (err) {
-      Alert.alert('Помилка', String(err.message || err));
+      ThemedAlert.alert('Помилка', String(err.message || err));
     } finally {
       setSaving(false);
     }
@@ -693,10 +697,10 @@ export default function Main({ route, navigation }) {
   };
 
   const submit = async () => {
-    if (!date) return Alert.alert('Увага', 'Вкажи дату');
-    if (!typePs) return Alert.alert('Увага', 'Вкажи тип ПС');
-    if (!timeDayMu) return Alert.alert('Увага', 'Вкажи час доби та МУ');
-    if (!flightType) return Alert.alert('Увага', 'Вкажи вид польоту');
+    if (!date) return ThemedAlert.alert('Увага', 'Вкажи дату');
+    if (!typePs) return ThemedAlert.alert('Увага', 'Вкажи тип ПС');
+    if (!timeDayMu) return ThemedAlert.alert('Увага', 'Вкажи час доби та МУ');
+    if (!flightType) return ThemedAlert.alert('Увага', 'Вкажи вид польоту');
 
     try {
       setSubmitting(true);
@@ -742,7 +746,7 @@ export default function Main({ route, navigation }) {
           });
         }
 
-        Alert.alert('Готово', 'Запис оновлено');
+        ThemedAlert.alert('Готово', 'Запис оновлено');
         resetForm();
         tabNavigate('MyRecords');
         return;
@@ -838,12 +842,12 @@ export default function Main({ route, navigation }) {
         });
         setShowFeedback(true);
       } else {
-        Alert.alert('Готово', 'Запис додано');
+        ThemedAlert.alert('Готово', 'Запис додано');
       }
 
       resetForm();
     } catch (err) {
-      Alert.alert('Помилка', String(err.message || err));
+      ThemedAlert.alert('Помилка', String(err.message || err));
     } finally {
       setSubmitting(false);
     }
@@ -1054,13 +1058,20 @@ const s = StyleSheet.create({
   btn: {
     height: 48,
     borderRadius: BorderRadius.lg,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: Spacing.lg,
+    gap: 8,
     ...Shadows.medium,
   },
+  btnIcon: {
+    marginRight: 4,
+  },
   btnPrimary: {
-    backgroundColor: Colors.primary,
+    backgroundColor: '#D9DBDE',
+    borderWidth: 1,
+    borderColor: '#B0B3B8',
   },
   btnSecondary: {
     backgroundColor: Colors.bgPrimary,
@@ -1072,7 +1083,7 @@ const s = StyleSheet.create({
     backgroundColor: Colors.btnDark,
   },
   btnText: {
-    color: Colors.textInverse,
+    color: '#555860',
     fontFamily: FONT,
     fontSize: 16,
     fontWeight: '400',

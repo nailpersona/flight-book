@@ -2,13 +2,14 @@
 import React, { useCallback, useContext, useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  ActivityIndicator, Alert, RefreshControl, Modal, FlatList,
+  ActivityIndicator, RefreshControl, Modal, FlatList,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { AuthCtx } from './contexts';
 import { supabase } from './supabase';
 import { Colors, Shadows, BorderRadius, Spacing, FONT } from './theme';
 import CustomCalendar from './components/CustomCalendar';
+import ThemedAlert from './ThemedAlert';
 
 // ─── Періоди ───
 
@@ -160,7 +161,7 @@ export default function FlightSummary({ navigation }) {
 
       setData(result);
     } catch (e) {
-      Alert.alert('Помилка', String(e.message || e));
+      ThemedAlert.alert('Помилка', String(e.message || e));
     } finally {
       setLoading(false);
     }

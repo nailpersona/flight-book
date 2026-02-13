@@ -1,7 +1,7 @@
 'use client';
 import { useContext, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { IoAirplaneOutline, IoBookOutline, IoStatsChartOutline, IoCalendarOutline, IoCheckmarkCircleOutline } from 'react-icons/io5';
+import { IoAirplaneOutline, IoBookOutline, IoStatsChartOutline, IoCalendarOutline, IoCheckmarkCircleOutline, IoAddCircleOutline } from 'react-icons/io5';
 import { useAuth } from '../../../lib/auth';
 import { supabase } from '../../../lib/supabase';
 import Section from '../../../components/Section';
@@ -438,8 +438,13 @@ export default function MainPage() {
             Скасувати
           </button>
         )}
-        <button className={`${s.btn} ${s.btnPrimary}`} onClick={submit} disabled={submitting} style={{width: editMode ? '30%' : '60%'}}>
-          {submitting ? <div className={s.spinner}/> : editMode ? 'Зберегти' : 'Додати запис'}
+        <button className={`${s.btn} ${s.btnPrimary}`} onClick={submit} disabled={submitting} style={{width: editMode ? '30%' : '60%', display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
+          {submitting ? <div className={s.spinner}/> : (
+            <>
+              <IoAddCircleOutline size={18} />
+              <span>{editMode ? 'Зберегти' : 'Додати запис'}</span>
+            </>
+          )}
         </button>
       </div>
 

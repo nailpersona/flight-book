@@ -1,6 +1,6 @@
 import React, { useContext, useEffect, useState } from 'react';
 import {
-  SafeAreaView, View, Text, TouchableOpacity, Alert, StyleSheet,
+  SafeAreaView, View, Text, TouchableOpacity, StyleSheet,
   ScrollView, ActivityIndicator, Modal, FlatList
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -8,6 +8,7 @@ import CustomCalendar from './components/CustomCalendar';
 import { AuthCtx } from './contexts';
 import { getBreaksDataFromSupabase, getAllPilotsFromSupabase, updateLpBreakDateInSupabase } from './supabaseData';
 import { Colors, Shadows, BorderRadius, Spacing, FONT } from './theme';
+import ThemedAlert from './ThemedAlert';
 
 // Soft status colors — muted pastel tones
 const STATUS = {
@@ -90,7 +91,7 @@ export default function BreaksLP({ route, navigation }) {
       if (!res?.ok) throw new Error(res?.error || 'Помилка');
       setData(res.data || {});
     } catch (e) {
-      Alert.alert('Помилка', String(e.message || e));
+      ThemedAlert.alert('Помилка', String(e.message || e));
       setData({});
     } finally {
       setLoading(false);
@@ -134,10 +135,10 @@ export default function BreaksLP({ route, navigation }) {
       if (result?.ok) {
         loadData();
       } else {
-        Alert.alert('Помилка', result?.error || 'Не вдалося оновити дату');
+        ThemedAlert.alert('Помилка', result?.error || 'Не вдалося оновити дату');
       }
     } catch (_) {
-      Alert.alert('Помилка', 'Не вдалося оновити дату');
+      ThemedAlert.alert('Помилка', 'Не вдалося оновити дату');
     }
   };
 

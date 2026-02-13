@@ -12,6 +12,8 @@ import ProfileScreen from './Profile';
 import SettingsScreen from './Settings';
 import AdminUsersScreen from './AdminUsers';
 import AdminSettingsScreen from './AdminSettings';
+import AdminPanelScreen from './AdminPanel';
+import AdminPositionsScreen from './AdminPositions';
 import MyRecordsScreen from './MyRecords';
 import FlightSummaryScreen from './FlightSummary';
 import BreaksMUScreen from './BreaksMU';
@@ -24,7 +26,7 @@ import ChatScreen from './ChatScreen';
 const TABS = [
   { key: 'records', label: 'Записи', icon: 'document-text-outline', screen: 'Main' },
   { key: 'inbox', label: 'Вхідні', icon: 'notifications-outline', screen: 'Inbox' },
-  { key: 'chat', label: 'Чат', icon: 'chatbubble-outline', screen: 'Chat' },
+  { key: 'chat', label: 'Посібник', icon: 'book-outline', screen: 'Chat' },
   { key: 'profile', label: 'Профіль', icon: 'person-outline', screen: 'Profile' },
 ];
 
@@ -118,6 +120,8 @@ function AppStack() {
       <InnerStack.Screen name="Settings" component={SettingsScreen} />
       <InnerStack.Screen name="AdminUsers" component={AdminUsersScreen} />
       <InnerStack.Screen name="AdminSettings" component={AdminSettingsScreen} />
+      <InnerStack.Screen name="AdminPanel" component={AdminPanelScreen} />
+      <InnerStack.Screen name="AdminPositions" component={AdminPositionsScreen} />
       <InnerStack.Screen name="MyRecords" component={MyRecordsScreen} />
       <InnerStack.Screen name="FlightSummary" component={FlightSummaryScreen} />
       <InnerStack.Screen name="BreaksMU" component={BreaksMUScreen} />

@@ -75,19 +75,21 @@
   cursor: pointer;
   background: none;
   border: none;
-  font-size: 18px;
-  line-height: 1;
+  color: #6B7280;
+  display: flex;
+  align-items: center;
 }
 .btn {
   margin-top: 24px;
-  background: #111827;
+  background: #D9DBDE;
   border-radius: 14px;
   height: 48px;
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 8px;
   width: 100%;
-  border: none;
+  border: 1px solid #B0B3B8;
   cursor: pointer;
   box-shadow: 0 3px 6px rgba(0,0,0,0.12);
 }
@@ -98,8 +100,13 @@
   opacity: 0.7;
   cursor: not-allowed;
 }
+.btnIcon {
+  color: #555860;
+  display: flex;
+  align-items: center;
+}
 .btnText {
-  color: #FFFFFF;
+  color: #555860;
   font-size: 16px;
   font-weight: 400;
   letter-spacing: 0.3px;
@@ -108,7 +115,7 @@
   width: 20px;
   height: 20px;
   border: 2px solid transparent;
-  border-top-color: #FFFFFF;
+  border-top-color: #555860;
   border-radius: 50%;
   animation: spin 0.6s linear infinite;
 }

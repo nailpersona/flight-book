@@ -6,7 +6,7 @@ import styles from './TabBar.module.css';
 const TABS = [
   { key: 'records', label: 'Записи', path: '/tabs/main', icon: IoDocumentTextOutline, iconActive: IoDocumentText },
   { key: 'inbox', label: 'Вхідні', path: '/tabs/inbox', icon: IoNotificationsOutline, iconActive: IoNotifications },
-  { key: 'chat', label: 'Чат', path: '/tabs/chat', icon: IoChatbubbleOutline, iconActive: IoChatbubble },
+  { key: 'chat', label: 'Посібник', path: '/tabs/chat', icon: IoChatbubbleOutline, iconActive: IoChatbubble },
   { key: 'profile', label: 'Профіль', path: '/tabs/profile', icon: IoPersonOutline, iconActive: IoPerson },
 ];
 

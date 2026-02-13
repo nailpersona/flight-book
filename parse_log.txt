@@ -1,0 +1,13 @@
+Found 510 INSERT statements
+Parsed sections: 510
+Level 1 sections: 143
+Child sections: 367
+Total: 510
+Level 2 sections (direct children of level 1): 0
+Level 3+ sections (children of non-level-1): 367
+Level 2 order nums: empty
+Sample remaining order_nums: ['', '', '', '12', '14', '16', '17', '19', '20', '21']
+
+Final SQL file created: pvp_sections_final.sql
+File location: C:\Users\fujitsu\Desktop\fly-book\pvp_sections_final.sql
+Total sections in SQL: 510

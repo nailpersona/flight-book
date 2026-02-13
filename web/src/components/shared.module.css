@@ -161,8 +161,9 @@
 .btn:hover { opacity: 0.9; }
 .btn:disabled { opacity: 0.7; cursor: not-allowed; }
 .btnPrimary {
-  background: #111827;
-  color: #FFFFFF;
+  background: #D9DBDE;
+  border: 1px solid #B0B3B8;
+  color: #555860;
 }
 .btnSecondary {
   background: #FFFFFF;
@@ -253,7 +254,7 @@
   width: 20px;
   height: 20px;
   border: 2px solid transparent;
-  border-top-color: currentColor;
+  border-top-color: #555860;
   border-radius: 50%;
   animation: spin 0.6s linear infinite;
 }
@@ -425,6 +426,8 @@
   max-width: 480px;
   margin: 0 auto;
   width: 100%;
+  overflow-y: auto;
+  min-height: 100vh;
 }
 
 /* Calendar */
@@ -646,4 +649,134 @@
   font-weight: 400;
   color: #6B7280;
   margin-top: 4px;
+}
+
+/* Units tree */
+.unitTree {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.unitBlock {
+  border-radius: 10px;
+  overflow: hidden;
+}
+.unitHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px;
+  background: #F9FAFB;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.unitHeader:hover {
+  background: #F3F4F6;
+}
+.unitToggle {
+  width: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #6B7280;
+}
+.unitType {
+  font-size: 11px;
+  font-weight: 400;
+  color: #9CA3AF;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  background: #E5E7EB;
+  border-radius: 4px;
+}
+.unitName {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 400;
+  color: #111827;
+}
+.unitCount {
+  font-size: 12px;
+  font-weight: 400;
+  color: #6B7280;
+}
+.unitActions {
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.unitHeader:hover .unitActions {
+  opacity: 1;
+}
+.unitBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  border: none;
+  background: #FFFFFF;
+  cursor: pointer;
+  color: #6B7280;
+  transition: all 0.15s;
+}
+.unitBtn:hover {
+  background: #E5E7EB;
+  color: #111827;
+}
+.unitChildren {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 0;
+}
+.unitUsers {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 0;
+}
+.unitUser {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px 6px 28px;
+  background: #FFFFFF;
+  border-radius: 8px;
+}
+.unitUserIcon {
+  color: #9CA3AF;
+  display: flex;
+  align-items: center;
+}
+.unitUserName {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 400;
+  color: #111827;
+}
+.unitUserInfo {
+  font-size: 12px;
+  font-weight: 400;
+  color: #6B7280;
+}
+.unitUserBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: #9CA3AF;
+  transition: all 0.15s;
+}
+.unitUserBtn:hover {
+  background: #F3F4F6;
+  color: #111827;
 }

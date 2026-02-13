@@ -602,27 +602,39 @@ export async function updateCommissionDateInSupabase(pib, category, dateStr) {
   }
 }
 
-/* ── Readiness dashboard: all pilots overview ── */
+/* ── Readiness dashboard: all pilots overview (Excel format with dates per aircraft) ── */
 
-const LP_COL_DEFS = [
-  { label: 'Склад.піл.', match: n => n.startsWith('складний_пілотаж') || n === 'складний_вищий_пілотаж' || n === 'простий_пілотаж' },
-  { label: 'Мала вис.', match: n => n === 'мала_висота' || n.startsWith('малі_висоти') || n === 'мв_гмв_мвк' },
-  { label: 'ГМВ', match: n => n === 'гмв' || n === 'гмв_онб' },
-  { label: 'Бой.заст.', match: n => n === 'бойове_застосування' || n.startsWith('бз_') || n === 'бомбометання' || n === 'бойове_маневрування' },
-  { label: 'Груп.', match: n => n.startsWith('групова_злітаність') || n === 'група' },
-  { label: 'Атаки', match: n => n.startsWith('атаки_') },
-  { label: 'Десант.', match: n => n.startsWith('десантування') },
+const MU_TYPES_LIST = ['ДПМУ', 'ДСМУ', 'ДВМП', 'НПМУ', 'НСМУ', 'НВМП'];
+
+// LP Break columns (Перерви за видами ЛП) - 14 types
+const LP_BREAK_COL_DEFS = [
+  { label: 'Польоти на Нмал', match: n => n === 'мала_висота' || n.startsWith('малі_висоти') },
+  { label: 'Польоти на СП', match: n => n.startsWith('складний_пілотаж') },
+  { label: 'Повітр. бій з ударними', match: n => n === 'повітряний_бій_з_ударними' },
+  { label: 'Повітр. бій з винищ.', match: n => n === 'повітряний_бій_з_винищувачами' },
+  { label: 'Польоти на ГМВ (з ОНБ)', match: n => n === 'гмв_онб' },
+  { label: 'Польоти парою', match: n => n.startsWith('групова_злітаність') || n === 'група' },
+  { label: 'Польоти на БЗ', match: n => n === 'бойове_застосування' },
+  { label: 'БЗ по НЦ з ПВМ', match: n => n === 'бз_нц_прості' },
+  { label: 'БЗ по НЦ з СВМ', match: n => n === 'бз_нц_складні' },
+  { label: 'ПБ за нешвидк. ПЦ', match: n => n === 'пб_нешвидкісні_пц' },
+  { label: 'Десантування', match: n => n.startsWith('десантування') },
+  { label: 'Продовж. зліт/посадка', match: n => n === 'продовжений_зліт' },
+  { label: 'Пошуково-рятувальні', match: n => n === 'пошуково_рятувальні' },
+  { label: 'Зовнішня підвіска/евак.', match: n => n === 'зовнішня_підвіска_евакуація' },
 ];
 
-const ANNUAL_MAP = [
-  { dbType: 'ТП', label: 'ТП' },
-  { dbType: 'ТП_дублюючі', label: 'ТП дубл.' },
-  { dbType: 'навігація', label: 'Навіг.' },
-  { dbType: 'БЗ', label: 'БЗ' },
-  { dbType: 'інструкторська', label: 'Інстр.' },
-  { dbType: 'Методика ЛВ', label: 'Мет.ЛВ' },
-  { dbType: 'Захід за приладами', label: 'Зах.прил.' },
-  { dbType: 'ТП з ІВД', label: 'ТП ІВД' },
+const COMM_TYPES_LIST = ['Аварійне залишення', 'Ст. 205 ПРІАЗ', 'ЛЛК', 'УМО', 'Відпустка', 'Стрибки з парашутом'];
+
+const ANNUAL_MAP_LIST = [
+  { dbType: 'ТП', label: 'Техніка пілотування' },
+  { dbType: 'ТП_дублюючі', label: 'ТП за дублями' },
+  { dbType: 'навігація', label: 'Навігація' },
+  { dbType: 'БЗ', label: 'Бойове застосування' },
+  { dbType: 'інструкторська', label: 'Інструкторська' },
+  { dbType: 'Методика ЛВ', label: 'Методика ЛВ' },
+  { dbType: 'Захід за приладами', label: 'Захід за приладами' },
+  { dbType: 'ТП з ІВД', label: 'ТП з ІВД' },
 ];
 
 function worstColor(a, b) {
@@ -648,7 +660,7 @@ export async function getAllPilotsReadinessData() {
       supabase.from('user_aircraft').select('user_id, aircraft_type_id'),
     ]);
 
-    const users = (usersRes.data || []).filter(u => u.role !== 'admin');
+    const users = usersRes.data || [];
     const allMuDates = muDatesRes.data || [];
     const allLpDates = lpDatesRes.data || [];
     const allCommissions = commDatesRes.data || [];
@@ -692,10 +704,102 @@ export async function getAllPilotsReadinessData() {
       userAcByUser[r.user_id].push(r.aircraft_type_id);
     });
 
+    // Helper: format date
+    const fmtDate = (dateStr) => {
+      if (!dateStr || dateStr.startsWith('1900')) return '';
+      const d = new Date(dateStr);
+      return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`;
+    };
+
+    // Helper: get aircraft data with dates per category
+    const getAircraftData = (userId, userAcIds, muPeriods) => {
+      const acData = [];
+
+      if (userAcIds.length === 0) {
+        // No aircraft - return empty row
+        return [null];
+      }
+
+      userAcIds.forEach(acId => {
+        const acName = aircraftMap[acId] || `#${acId}`;
+        const muDates = muByUser[userId] || [];
+        const lpDates = lpByUser[userId] || [];
+        const commDates = commByUser[userId] || [];
+        const annDates = annualByUser[userId] || [];
+
+        // MU dates per aircraft
+        const mu = {};
+        MU_TYPES_LIST.forEach(muType => {
+          const entry = muDates.find(e =>
+            e.aircraft_type_id === acId && e.mu_condition === muType
+          );
+          const allowed = muPeriods[muType] || 0;
+          mu[muType] = {
+            date: fmtDate(entry?.last_date),
+            color: entry ? computeColor(entry.last_date, allowed) : 'gray'
+          };
+        });
+
+        // LP break dates per aircraft
+        const lpBreak = {};
+        LP_BREAK_COL_DEFS.forEach(col => {
+          const entry = lpDates.find(e =>
+            e.aircraft_type_id === acId && col.match(e.lp_type)
+          );
+          const months = getLpBreakMonths(col.label, acId);
+          lpBreak[col.label] = {
+            date: fmtDate(entry?.last_date),
+            color: entry ? computeColor(entry.last_date, months * 30) : 'gray'
+          };
+        });
+
+        // Commission dates (not per aircraft, but overall for pilot)
+        const comm = {};
+        COMM_TYPES_LIST.forEach(ct => {
+          const entry = commDates.find(e => e.commission_types?.name === ct);
+          comm[ct] = {
+            date: fmtDate(entry?.commission_date),
+            color: entry ? computeColorFromExpiry(entry.expiry_date) : 'gray'
+          };
+        });
+
+        // Annual check dates (not per aircraft)
+        const annual = {};
+        ANNUAL_MAP_LIST.forEach(({ dbType, label }) => {
+          const entry = annDates.find(e => e.check_type === dbType);
+          annual[label] = {
+            date: fmtDate(entry?.check_date),
+            color: entry ? computeColorFromExpiry(entry.expiry_date) : 'gray'
+          };
+        });
+
+        acData.push({
+          name: acName,
+          mu, lpBreak, comm, annual
+        });
+      });
+
+      return acData;
+    };
+
+    // Helper: get LP break months for matching
+    const getLpBreakMonths = (lpBreakLabel, acId) => {
+      const match = breaksLpAll.find(bp => {
+        if (bp.kbp_document && bp.kbp_document !== 'КЛПВ') {
+          // Check if aircraft uses this KBP
+          const acKbps = aircraftToKbp[acId] || [];
+          if (!acKbps.includes(bp.kbp_document)) return false;
+        }
+        return LP_BREAK_COL_DEFS.find(col => col.label === lpBreakLabel)?.match(bp.lp_type_normalized);
+      });
+      return match?.months || 0;
+    };
+
     const pilots = users.map(user => {
       const userId = user.id;
       const milClass = user.military_class || 2;
       const coeff = 1.0;
+      const muPeriods = muPeriodsByClass[milClass] || {};
 
       let userAcIds = userAcByUser[userId] || [];
       if (userAcIds.length === 0) {
@@ -703,92 +807,28 @@ export async function getAllPilotsReadinessData() {
         (muByUser[userId] || []).forEach(r => s.add(r.aircraft_type_id));
         userAcIds = [...s];
       }
-      const userAcNames = userAcIds.map(id => aircraftMap[id]).filter(Boolean);
 
-      // MU status
-      const muPeriods = muPeriodsByClass[milClass] || {};
-      const userMuDates = muByUser[userId] || [];
-      const mu = {};
-      MU_TYPES.forEach(t => {
-        const allowed = Math.floor((muPeriods[t] || 0) * coeff);
-        const entries = userMuDates.filter(r => r.mu_condition === t);
-        if (entries.length === 0 || !allowed) { mu[t] = 'gray'; return; }
-        let w = 'green';
-        entries.forEach(e => { w = worstColor(w, computeColor(e.last_date, allowed)); });
-        mu[t] = w;
-      });
+      const aircraft = getAircraftData(userId, userAcIds, muPeriods);
 
-      // LP status
-      const userLpDates = lpByUser[userId] || [];
-      const userKbps = new Set();
-      userAcIds.forEach(acId => { (aircraftToKbp[acId] || []).forEach(k => userKbps.add(k)); });
-
-      const lpPeriodMap = {};
-      breaksLpAll.forEach(bp => {
-        if (bp.kbp_document && !userKbps.has(bp.kbp_document)) return;
-        const mc = bp.military_class;
-        if (mc !== null && mc !== milClass) return;
-        const key = bp.lp_type_normalized;
-        const months = mc === null ? bp.months : Math.floor(bp.months * coeff);
-        if (!lpPeriodMap[key] || mc === milClass) lpPeriodMap[key] = months;
-      });
-
-      const lp = {};
-      LP_COL_DEFS.forEach(col => {
-        let w = 'gray';
-        userLpDates.forEach(ld => {
-          if (!col.match(ld.lp_type)) return;
-          const months = lpPeriodMap[ld.lp_type];
-          if (!months) return;
-          w = worstColor(w, computeColor(ld.last_date, months * 30));
+      // Calculate overall status for summary
+      let worstStatus = 'gray';
+      aircraft.forEach(ac => {
+        if (!ac) return;
+        [...Object.values(ac.mu), ...Object.values(ac.lp), ...Object.values(ac.comm), ...Object.values(ac.annual)].forEach(c => {
+          if (c.color !== 'gray') worstStatus = worstColor(worstStatus, c.color);
         });
-        lp[col.label] = w;
       });
 
-      // Commission status
-      const userComm = commByUser[userId] || [];
-      const commLatest = {};
-      userComm.forEach(c => {
-        const name = c.commission_types?.name;
-        if (!name) return;
-        if (!commLatest[name] || new Date(c.commission_date) > new Date(commLatest[name].commission_date))
-          commLatest[name] = c;
-      });
-
-      const commission = {};
-      const azar = commLatest['Аварійне залишення'];
-      commission['Авар.зал.'] = azar ? computeColorFromExpiry(azar.expiry_date) : 'gray';
-      const st205 = commLatest['Ст. 205 ПРІАЗ'];
-      commission['Ст.205'] = st205 ? computeColorFromExpiry(st205.expiry_date) : 'gray';
-      const llk = commLatest['ЛЛК'];
-      const umo = commLatest['УМО'];
-      let llkUmo = 'gray';
-      if (llk) llkUmo = computeColorFromExpiry(llk.expiry_date);
-      if (umo) { const uc = computeColorFromExpiry(umo.expiry_date); llkUmo = llk ? worstColor(llkUmo, uc) : uc; }
-      commission['ЛЛК/УМО'] = llkUmo;
-      const vac = commLatest['Відпустка'];
-      commission['Відпустка'] = vac ? computeColorFromExpiry(vac.expiry_date) : 'gray';
-      const par = commLatest['Стрибки з парашутом'];
-      commission['Стрибки'] = par ? computeColorFromExpiry(par.expiry_date) : 'gray';
-
-      // Annual checks status
-      const userAnnual = annualByUser[userId] || [];
-      const annualLatest = {};
-      userAnnual.forEach(c => {
-        if (!annualLatest[c.check_type] || new Date(c.check_date) > new Date(annualLatest[c.check_type].check_date))
-          annualLatest[c.check_type] = c;
-      });
-      const annual = {};
-      ANNUAL_MAP.forEach(({ dbType, label }) => {
-        const entry = annualLatest[dbType];
-        annual[label] = entry ? computeColorFromExpiry(entry.expiry_date) : 'gray';
-      });
-
-      // Overall
-      const allColors = [...Object.values(mu), ...Object.values(lp), ...Object.values(commission), ...Object.values(annual)].filter(c => c !== 'gray');
-      const overallStatus = allColors.length > 0 ? allColors.reduce((w, c) => worstColor(w, c), 'green') : 'gray';
-
-      return { id: userId, name: user.name, rank: user.rank || '', position: user.position || '', aircraft: userAcNames, mu, lp, commission, annual, overallStatus };
+      return {
+        id: userId,
+        name: user.name,
+        rank: user.rank || '',
+        position: user.position || '',
+        militaryClass: user.military_class || 2,
+        testClass: user.test_class || '',
+        aircraft,
+        overallStatus: worstStatus
+      };
     });
 
     const summary = { total: pilots.length, green: 0, yellow: 0, red: 0 };

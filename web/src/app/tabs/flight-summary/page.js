@@ -341,7 +341,7 @@ export default function FlightSummaryPage() {
 
 function HeroCard({ value, label }) {
   return (
-    <div style={{ flex: 1, background: '#111827', borderRadius: 14, padding: 16, textAlign: 'center' }}>
+    <div style={{ flex: 1, background: '#6B7280', borderRadius: 14, padding: 16, textAlign: 'center' }}>
       <div style={{ fontSize: 24, color: '#fff', fontWeight: 400 }}>{value}</div>
       <div style={{ fontSize: 11, color: '#9CA3AF', fontWeight: 400, marginTop: 2 }}>{label}</div>
     </div>

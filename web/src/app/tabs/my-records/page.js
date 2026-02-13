@@ -108,7 +108,7 @@ export default function MyRecordsPage() {
           <div key={item.id} className={s.recordCard}>
             <div className={s.recordHeader}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ background: '#111827', borderRadius: 6, padding: '4px 10px', color: '#fff', fontSize: 13 }}>{date}</span>
+                <span style={{ background: '#6B7280', borderRadius: 6, padding: '4px 10px', color: '#fff', fontSize: 13 }}>{date}</span>
                 {typePs && <span style={{ fontSize: 15, color: '#111827' }}>{typePs}</span>}
               </div>
               {pib && <span style={{ fontSize: 13, color: '#6B7280' }}>{pib}</span>}

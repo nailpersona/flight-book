@@ -1,7 +1,7 @@
 // MyRecords.js
 import React, { useCallback, useContext, useEffect, useState } from 'react';
 import {
-  View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, RefreshControl,
+  View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
@@ -9,6 +9,7 @@ import { AuthCtx } from './contexts';
 import { supabase } from './supabase';
 import { Colors, Shadows, BorderRadius, Spacing, FONT } from './theme';
 import { TabNavigationContext } from './FixedTabNavigator';
+import ThemedAlert from './ThemedAlert';
 
 /** Дата ISO → DD.MM.YYYY */
 function formatDate(v) {
@@ -83,7 +84,7 @@ export default function MyRecords({ navigation }) {
       if (error) throw error;
       setItems(data || []);
     } catch (e) {
-      Alert.alert('Помилка', String(e.message || e));
+      ThemedAlert.alert('Помилка', String(e.message || e));
     } finally {
       setLoading(false);
     }
@@ -93,7 +94,7 @@ export default function MyRecords({ navigation }) {
   useEffect(() => { load(); }, []);
 
   const onDelete = (it) => {
-    Alert.alert('Видалити запис', 'Підтвердити видалення?', [
+    ThemedAlert.alert('Видалити запис', 'Підтвердити видалення?', [
       { text: 'Скасувати' },
       {
         text: 'Видалити',
@@ -109,7 +110,7 @@ export default function MyRecords({ navigation }) {
             if (error) throw error;
             await load();
           } catch (e) {
-            Alert.alert('Помилка', String(e.message || e));
+            ThemedAlert.alert('Помилка', String(e.message || e));
           }
         },
       },

@@ -10,7 +10,7 @@ import ProfileScreen from './Profile';
 const TABS = [
   { key: 'records', label: 'Записи', icon: 'document-text-outline' },
   { key: 'inbox', label: 'Вхідні', icon: 'mail-outline' },
-  { key: 'chat', label: 'Чат', icon: 'chatbubble-outline' },
+  { key: 'chat', label: 'Посібник', icon: 'chatbubble-outline' },
   { key: 'profile', label: 'Профіль', icon: 'person-outline' },
 ];
 
@@ -27,7 +27,7 @@ function ChatPlaceholder() {
   return (
     <View style={ph.container}>
       <Ionicons name="chatbubble-outline" size={48} color={Colors.textTertiary} />
-      <Text style={ph.text}>Чат — скоро</Text>
+      <Text style={ph.text}>Посібник — скоро</Text>
     </View>
   );
 }

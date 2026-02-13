@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, SafeAreaView, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, SafeAreaView, KeyboardAvoidingView, Platform } from 'react-native';
 import { supabase } from './supabase';
+import ThemedAlert from './ThemedAlert';
 
 const DARK = '#333'; const SHADOW = { shadowColor:'#000', shadowOpacity:0.18, shadowRadius:8, shadowOffset:{width:0,height:4}, elevation:3 };
 
@@ -13,7 +14,7 @@ export default function AdminUsers({ route, navigation }) {
 
   const submit = async () => {
     try{
-      if(!email || !password) return Alert.alert('Увага','Email і пароль обовʼязкові');
+      if(!email || !password) return ThemedAlert.alert('Увага','Email і пароль обовʼязкові');
       const { data: j, error: rpcErr } = await supabase.rpc('fn_admin_create_user', {
         p_email: email.trim(),
         p_name: pib.trim(),
@@ -22,9 +23,9 @@ export default function AdminUsers({ route, navigation }) {
       });
       if(rpcErr) throw new Error(rpcErr.message);
       if(!j?.ok) throw new Error(j?.error || 'Помилка');
-      Alert.alert('Готово','Користувача збережено');
+      ThemedAlert.alert('Готово','Користувача збережено');
       setEmail(''); setPib(''); setPassword('');
-    }catch(err){ Alert.alert('Помилка', String(err.message||err)); }
+    }catch(err){ ThemedAlert.alert('Помилка', String(err.message||err)); }
   };
 
   return (

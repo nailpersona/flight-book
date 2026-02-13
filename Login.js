@@ -1,24 +1,29 @@
 import React, { useContext, useState } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, Alert, StyleSheet,
+  View, Text, TextInput, TouchableOpacity, StyleSheet,
   Platform, SafeAreaView, ActivityIndicator, Image, KeyboardAvoidingView,
   ScrollView
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { AuthCtx } from './contexts';
 import { Colors, FONT, Shadows, BorderRadius, Spacing } from './theme';
 import { supabase } from './supabase';
+import ThemedAlert from './ThemedAlert';
 
 export default function Login({ navigation }) {
   const { setAuth } = useContext(AuthCtx);
   const [email, setEmail] = useState('');
   const [pass, setPass] = useState('');
+  const [name, setName] = useState('');
+  const [inviteCode, setInviteCode] = useState('');
   const [showPass, setShowPass] = useState(false);
   const [busy, setBusy] = useState(false);
   const [focused, setFocused] = useState(null);
+  const [isRegister, setIsRegister] = useState(false);
 
   const onLogin = async () => {
     if (!email.trim() || !pass.trim()) {
-      return Alert.alert('Увага', 'Введіть email і пароль');
+      return ThemedAlert.alert('Увага', 'Введіть email і пароль');
     }
     try {
       setBusy(true);
@@ -44,9 +49,53 @@ export default function Login({ navigation }) {
         routes: [{ name: 'Tabs' }],
       });
     } catch (e) {
-      Alert.alert('Помилка', String(e.message || e));
+      ThemedAlert.alert('Помилка', String(e.message || e));
     } finally {
       setBusy(false);
+    }
+  };
+
+  const onRegister = async () => {
+    if (!email.trim() || !pass.trim() || !name.trim() || !inviteCode.trim()) {
+      return ThemedAlert.alert('Увага', 'Заповніть усі поля');
+    }
+    try {
+      setBusy(true);
+      const { data: j, error: rpcErr } = await supabase.rpc('fn_register_with_position_invite', {
+        p_email: email.trim(),
+        p_password: pass.trim(),
+        p_name: name.trim(),
+        p_invite_code: inviteCode.trim(),
+      });
+      if (rpcErr) throw new Error(rpcErr.message);
+      if (!j?.ok) throw new Error(j?.error || 'Помилка реєстрації');
+
+      const WEEK = 7 * 24 * 60 * 60 * 1000;
+      const authObj = {
+        userId: j.id,
+        role: j.role || 'user',
+        pib: j.pib || '',
+        email: j.email || email.trim(),
+        expires: Date.now() + WEEK,
+      };
+      setAuth(authObj);
+
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'Tabs' }],
+      });
+    } catch (e) {
+      ThemedAlert.alert('Помилка', String(e.message || e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleSubmit = () => {
+    if (isRegister) {
+      onRegister();
+    } else {
+      onLogin();
     }
   };
 
@@ -71,8 +120,22 @@ export default function Login({ navigation }) {
 
           {/* Card */}
           <View style={styles.card}>
-            <Text style={styles.title}>Вхід</Text>
-            <Text style={styles.subtitle}>Авторизуйтесь для продовження</Text>
+            <View style={styles.modeSwitch}>
+              <TouchableOpacity
+                style={[styles.modeBtn, !isRegister && styles.modeBtnActive]}
+                onPress={() => setIsRegister(false)}
+              >
+                <Text style={[styles.modeBtnText, !isRegister && styles.modeBtnTextActive]}>Вхід</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modeBtn, isRegister && styles.modeBtnActive]}
+                onPress={() => setIsRegister(true)}
+              >
+                <Text style={[styles.modeBtnText, isRegister && styles.modeBtnTextActive]}>Реєстрація</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.subtitle}>{isRegister ? 'Реєстрація з кодом запрошення' : 'Авторизуйтесь для продовження'}</Text>
 
             {/* Email */}
             <Text style={styles.label}>Email</Text>
@@ -102,7 +165,7 @@ export default function Login({ navigation }) {
               <TextInput
                 value={pass}
                 onChangeText={setPass}
-                placeholder="Введіть пароль"
+                placeholder={isRegister ? 'Придумайте пароль' : 'Введіть пароль'}
                 placeholderTextColor={Colors.textTertiary}
                 secureTextEntry={!showPass}
                 style={[styles.input, { flex: 1 }]}
@@ -114,20 +177,72 @@ export default function Login({ navigation }) {
                 style={styles.eyeBtn}
                 activeOpacity={0.7}
               >
-                <Text style={styles.eyeText}>{showPass ? '🙈' : '👁️'}</Text>
+                <Ionicons
+                  name={showPass ? 'eye-off-outline' : 'eye-outline'}
+                  size={20}
+                  color={Colors.textSecondary}
+                />
               </TouchableOpacity>
             </View>
 
-            {/* Login button */}
+            {/* ПІБ (тільки для реєстрації) */}
+            {isRegister && (
+              <>
+                <Text style={styles.label}>ПІБ</Text>
+                <View style={[
+                  styles.inputWrap,
+                  focused === 'name' && styles.inputFocused,
+                ]}>
+                  <TextInput
+                    value={name}
+                    onChangeText={setName}
+                    placeholder="Прізвище Ім'я По батькові"
+                    placeholderTextColor={Colors.textTertiary}
+                    style={styles.input}
+                    onFocus={() => setFocused('name')}
+                    onBlur={() => setFocused(null)}
+                  />
+                </View>
+
+                <Text style={styles.label}>Код від командира</Text>
+                <View style={[
+                  styles.inputWrap,
+                  focused === 'invite' && styles.inputFocused,
+                ]}>
+                  <TextInput
+                    value={inviteCode}
+                    onChangeText={setInviteCode}
+                    placeholder="Введіть код від командира"
+                    placeholderTextColor={Colors.textTertiary}
+                    autoCapitalize="characters"
+                    style={styles.input}
+                    onFocus={() => setFocused('invite')}
+                    onBlur={() => setFocused(null)}
+                  />
+                </View>
+              </>
+            )}
+
+            {/* Login/Register button */}
             <TouchableOpacity
               style={[styles.btn, busy && { opacity: 0.7 }]}
-              onPress={onLogin}
+              onPress={handleSubmit}
               activeOpacity={0.85}
               disabled={busy}
             >
               {busy
-                ? <ActivityIndicator color={Colors.textInverse} />
-                : <Text style={styles.btnText}>Увійти</Text>
+                ? <ActivityIndicator color="#555860" />
+                : (
+                  <>
+                    <Ionicons
+                      name={isRegister ? 'person-add-outline' : 'log-in-outline'}
+                      size={18}
+                      color="#555860"
+                      style={styles.btnIcon}
+                    />
+                    <Text style={styles.btnText}>{isRegister ? 'Зареєструватися' : 'Увійти'}</Text>
+                  </>
+                )
               }
             </TouchableOpacity>
           </View>
@@ -166,6 +281,34 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.xl,
     paddingVertical: 28,
     ...Shadows.large,
+  },
+
+  // Mode switch
+  modeSwitch: {
+    flexDirection: 'row',
+    backgroundColor: Colors.bgSecondary,
+    borderRadius: BorderRadius.md,
+    padding: 4,
+    marginBottom: 16,
+  },
+  modeBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderRadius: BorderRadius.sm,
+  },
+  modeBtnActive: {
+    backgroundColor: Colors.bgPrimary,
+    ...Shadows.small,
+  },
+  modeBtnText: {
+    fontFamily: FONT,
+    fontSize: 14,
+    fontWeight: '400',
+    color: Colors.textSecondary,
+  },
+  modeBtnTextActive: {
+    color: Colors.textPrimary,
   },
 
   // Typography
@@ -221,22 +364,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
-  eyeText: {
-    fontSize: 18,
-  },
 
   // Button
   btn: {
     marginTop: 24,
-    backgroundColor: Colors.primary,
+    backgroundColor: '#D9DBDE',
     borderRadius: BorderRadius.lg,
     height: 48,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: '#B0B3B8',
     ...Shadows.medium,
   },
+  btnIcon: {
+    marginRight: 4,
+  },
   btnText: {
-    color: Colors.textInverse,
+    color: '#555860',
     fontFamily: FONT,
     fontSize: 16,
     fontWeight: '400',

@@ -14,7 +14,7 @@ try {
     }),
   });
 } catch (e) {
-  console.warn('Notifications not available (Expo Go):', e.message);
+  // Notifications not available in Expo Go - silent fail
 }
 
 // ─── Android канали ───
@@ -38,7 +38,7 @@ export async function setupChannels() {
       sound: 'default',
     });
   } catch (e) {
-    console.warn('setupChannels failed (Expo Go):', e.message);
+    // setupChannels not available in Expo Go - silent fail
   }
 }
 
@@ -50,7 +50,7 @@ export async function requestPermissions() {
     const { status } = await Notifications.requestPermissionsAsync();
     return status === 'granted';
   } catch (e) {
-    console.warn('requestPermissions failed (Expo Go):', e.message);
+    // requestPermissions not available in Expo Go - silent fail
     return false;
   }
 }

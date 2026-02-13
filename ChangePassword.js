@@ -1,12 +1,13 @@
 import React, { useContext, useState } from 'react';
 import {
-  SafeAreaView, View, Text, TextInput, TouchableOpacity, Alert,
+  SafeAreaView, View, Text, TextInput, TouchableOpacity,
   StyleSheet, Platform, ActivityIndicator, KeyboardAvoidingView, ScrollView
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { AuthCtx } from './contexts';
 import { Colors, FONT, Shadows, BorderRadius, Spacing } from './theme';
 import { supabase } from './supabase';
+import ThemedAlert from './ThemedAlert';
 
 export default function ChangePassword({ navigation }) {
   const { auth, setAuth } = useContext(AuthCtx);
@@ -19,20 +20,20 @@ export default function ChangePassword({ navigation }) {
 
   const handleChangePassword = async () => {
     if (!auth?.email) {
-      Alert.alert('Помилка', 'Сесія не активна. Увійдіть заново.');
+      ThemedAlert.alert('Помилка', 'Сесія не активна. Увійдіть заново.');
       return navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
     }
 
     if (!newPassword || !confirmPassword) {
-      return Alert.alert('Увага', 'Заповніть всі поля нового пароля');
+      return ThemedAlert.alert('Увага', 'Заповніть всі поля нового пароля');
     }
 
     if (newPassword.length < 6) {
-      return Alert.alert('Увага', 'Новий пароль має містити мінімум 6 символів');
+      return ThemedAlert.alert('Увага', 'Новий пароль має містити мінімум 6 символів');
     }
 
     if (newPassword !== confirmPassword) {
-      return Alert.alert('Увага', 'Нові паролі не збігаються');
+      return ThemedAlert.alert('Увага', 'Нові паролі не збігаються');
     }
 
     try {
@@ -55,9 +56,9 @@ export default function ChangePassword({ navigation }) {
         setAuth({ ...auth, expires: Date.now() + WEEK });
       }
 
-      Alert.alert('Готово', 'Пароль успішно змінено');
+      ThemedAlert.alert('Готово', 'Пароль успішно змінено');
     } catch (error) {
-      Alert.alert('Помилка', String(error.message || error));
+      ThemedAlert.alert('Помилка', String(error.message || error));
     } finally {
       setBusy(false);
     }

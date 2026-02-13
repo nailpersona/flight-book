@@ -4,7 +4,6 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  Alert,
   StyleSheet,
   SafeAreaView,
   ScrollView,
@@ -16,6 +15,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { AuthCtx } from './contexts';
 import { supabase } from './supabase';
+import ThemedAlert from './ThemedAlert';
 
 const FONT = 'NewsCycle-Regular';
 const DARK = '#333333';
@@ -206,15 +206,15 @@ export default function Settings({ navigation }) {
 
   const handlePasswordChange = async () => {
     if (!newPassword.trim()) {
-      Alert.alert('Помилка', 'Введіть новий пароль');
+      ThemedAlert.alert('Помилка', 'Введіть новий пароль');
       return;
     }
     if (newPassword.length < 6) {
-      Alert.alert('Помилка', 'Пароль має містити мінімум 6 символів');
+      ThemedAlert.alert('Помилка', 'Пароль має містити мінімум 6 символів');
       return;
     }
     if (newPassword !== confirmPassword) {
-      Alert.alert('Помилка', 'Паролі не співпадають');
+      ThemedAlert.alert('Помилка', 'Паролі не співпадають');
       return;
     }
     try {
@@ -226,15 +226,15 @@ export default function Settings({ navigation }) {
       });
       if (rpcErr) throw new Error(rpcErr.message);
       if (result?.ok) {
-        Alert.alert('Успіх', 'Пароль змінено успішно');
+        ThemedAlert.alert('Успіх', 'Пароль змінено успішно');
         setNewPassword('');
         setConfirmPassword('');
         setShowPasswordChange(false);
       } else {
-        Alert.alert('Помилка', result?.error || 'Не вдалося змінити пароль');
+        ThemedAlert.alert('Помилка', result?.error || 'Не вдалося змінити пароль');
       }
     } catch (error) {
-      Alert.alert('Помилка', String(error.message || 'Не вдалося змінити пароль'));
+      ThemedAlert.alert('Помилка', String(error.message || 'Не вдалося змінити пароль'));
     } finally {
       setUpdatingPassword(false);
     }
@@ -270,11 +270,11 @@ export default function Settings({ navigation }) {
 
       if (error) throw error;
 
-      Alert.alert('Успіх', 'Налаштування збережено');
+      ThemedAlert.alert('Успіх', 'Налаштування збережено');
       navigation.goBack();
     } catch (error) {
       console.error('Error saving settings:', error);
-      Alert.alert('Помилка', 'Не вдалося зберегти налаштування');
+      ThemedAlert.alert('Помилка', 'Не вдалося зберегти налаштування');
     } finally {
       setSaving(false);
     }

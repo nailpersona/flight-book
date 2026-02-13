@@ -3,20 +3,20 @@
   "WorkspaceRootPath": "C:\\Users\\fujitsu\\Desktop\\sheets-client-53\\",
   "Documents": [
     {
-      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Users\\fujitsu\\Desktop\\sheets-client-53\\app.json||{3B902123-F8A7-4915-9F01-361F908088D0}",
-      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:app.json||{3B902123-F8A7-4915-9F01-361F908088D0}"
-    },
-    {
-      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Users\\fujitsu\\Desktop\\sheets-client-53\\CommissionTable.js||{3B902123-F8A7-4915-9F01-361F908088D0}",
-      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:CommissionTable.js||{3B902123-F8A7-4915-9F01-361F908088D0}"
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Users\\fujitsu\\Desktop\\sheets-client-53\\BreaksLP.js||{3B902123-F8A7-4915-9F01-361F908088D0}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:BreaksLP.js||{3B902123-F8A7-4915-9F01-361F908088D0}"
     },
     {
       "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Users\\fujitsu\\Desktop\\sheets-client-53\\BreaksMU.js||{8B382828-6202-11D1-8870-0000F87579D2}",
       "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:BreaksMU.js||{8B382828-6202-11D1-8870-0000F87579D2}"
     },
     {
-      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Users\\fujitsu\\Desktop\\sheets-client-53\\BreaksLP.js||{3B902123-F8A7-4915-9F01-361F908088D0}",
-      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:BreaksLP.js||{3B902123-F8A7-4915-9F01-361F908088D0}"
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Users\\fujitsu\\Desktop\\sheets-client-53\\CommissionTable.js||{3B902123-F8A7-4915-9F01-361F908088D0}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:CommissionTable.js||{3B902123-F8A7-4915-9F01-361F908088D0}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Users\\fujitsu\\Desktop\\sheets-client-53\\app.json||{3B902123-F8A7-4915-9F01-361F908088D0}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:app.json||{3B902123-F8A7-4915-9F01-361F908088D0}"
     },
     {
       "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Users\\fujitsu\\Desktop\\sheets-client-53\\api.js||{3B902123-F8A7-4915-9F01-361F908088D0}",
@@ -58,7 +58,7 @@
       "DocumentGroups": [
         {
           "DockedWidth": 200,
-          "SelectedChildIndex": 5,
+          "SelectedChildIndex": 4,
           "Children": [
             {
               "$type": "Bookmark",
@@ -74,8 +74,7 @@
               "RelativeToolTip": "MyRecords.js",
               "ViewState": "AgIAAN0AAAAAAAAAAAAuwAEBAAAAAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001646|",
-              "WhenOpened": "2025-09-16T10:04:25.658Z",
-              "EditorCaption": ""
+              "WhenOpened": "2025-09-16T10:04:25.658Z"
             },
             {
               "$type": "Document",
@@ -87,57 +86,56 @@
               "RelativeToolTip": "package.json",
               "ViewState": "AgIAAAAAAAAAAAAAAAAAAAwAAAArAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001642|",
-              "WhenOpened": "2025-09-15T06:35:20.642Z",
-              "EditorCaption": ""
+              "WhenOpened": "2025-09-15T06:35:20.642Z"
             },
             {
               "$type": "Document",
-              "DocumentIndex": 1,
+              "DocumentIndex": 2,
               "Title": "CommissionTable.js",
               "DocumentMoniker": "C:\\Users\\fujitsu\\Desktop\\sheets-client-53\\CommissionTable.js",
               "RelativeDocumentMoniker": "CommissionTable.js",
               "ToolTip": "C:\\Users\\fujitsu\\Desktop\\sheets-client-53\\CommissionTable.js",
               "RelativeToolTip": "CommissionTable.js",
-              "ViewState": "AgIAANsBAAAAAAAAAAAAAOIBAAAbAAAAAAAAAA==",
+              "ViewState": "AgIAAAEDAAAAAAAAAAAwwCEDAAAfAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001646|",
               "WhenOpened": "2025-09-11T11:59:17.716Z",
               "EditorCaption": ""
             },
             {
               "$type": "Document",
-              "DocumentIndex": 3,
+              "DocumentIndex": 0,
               "Title": "BreaksLP.js",
               "DocumentMoniker": "C:\\Users\\fujitsu\\Desktop\\sheets-client-53\\BreaksLP.js",
               "RelativeDocumentMoniker": "BreaksLP.js",
               "ToolTip": "C:\\Users\\fujitsu\\Desktop\\sheets-client-53\\BreaksLP.js",
               "RelativeToolTip": "BreaksLP.js",
-              "ViewState": "AgIAALcAAAAAAAAAAAAAAM4AAAAxAAAAAAAAAA==",
+              "ViewState": "AgIAAJEBAAAAAAAAAAAuwLUBAAADAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001646|",
               "WhenOpened": "2025-09-10T18:20:54.378Z",
               "EditorCaption": ""
             },
             {
               "$type": "Document",
-              "DocumentIndex": 0,
+              "DocumentIndex": 3,
               "Title": "app.json",
               "DocumentMoniker": "C:\\Users\\fujitsu\\Desktop\\sheets-client-53\\app.json",
               "RelativeDocumentMoniker": "app.json",
               "ToolTip": "C:\\Users\\fujitsu\\Desktop\\sheets-client-53\\app.json",
               "RelativeToolTip": "app.json",
-              "ViewState": "AgIAAAAAAAAAAAAAAAAAABEAAAAXAAAAAAAAAA==",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAABkAAACGAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001642|",
               "WhenOpened": "2025-09-09T13:35:28.301Z",
               "EditorCaption": ""
             },
             {
               "$type": "Document",
-              "DocumentIndex": 2,
+              "DocumentIndex": 1,
               "Title": "BreaksMU.js",
               "DocumentMoniker": "C:\\Users\\fujitsu\\Desktop\\sheets-client-53\\BreaksMU.js",
               "RelativeDocumentMoniker": "BreaksMU.js",
               "ToolTip": "C:\\Users\\fujitsu\\Desktop\\sheets-client-53\\BreaksMU.js",
               "RelativeToolTip": "BreaksMU.js",
-              "ViewState": "AgIAAL0AAAAAAAAAAAAgwM4AAABMAAAAAAAAAA==",
+              "ViewState": "AgIAAKgBAAAAAAAAAAAwwMoBAAADAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001646|",
               "WhenOpened": "2025-09-09T13:12:35.95Z",
               "EditorCaption": ""
@@ -152,8 +150,7 @@
               "RelativeToolTip": "App.js",
               "ViewState": "AgIAAF0AAAAAAAAAAAAuwIEAAAABAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001646|",
-              "WhenOpened": "2025-09-09T12:36:04.827Z",
-              "EditorCaption": ""
+              "WhenOpened": "2025-09-09T12:36:04.827Z"
             },
             {
               "$type": "Document",
@@ -165,8 +162,7 @@
               "RelativeToolTip": "Main.js",
               "ViewState": "AgIAANsBAAAAAAAAAAAwwPsBAAADAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001646|",
-              "WhenOpened": "2025-09-09T11:09:47.768Z",
-              "EditorCaption": ""
+              "WhenOpened": "2025-09-09T11:09:47.768Z"
             },
             {
               "$type": "Document",
@@ -178,8 +174,7 @@
               "RelativeToolTip": "api.js",
               "ViewState": "AgIAAJEAAAAAAAAAAAAAAK4AAAACAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001646|",
-              "WhenOpened": "2025-09-09T11:00:26.861Z",
-              "EditorCaption": ""
+              "WhenOpened": "2025-09-09T11:00:26.861Z"
             },
             {
               "$type": "Document",
@@ -191,8 +186,7 @@
               "RelativeToolTip": "Profile.js",
               "ViewState": "AgIAAIkBAAAAAAAAAAAuwK0BAAADAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001646|",
-              "WhenOpened": "2025-09-09T12:26:38.375Z",
-              "EditorCaption": ""
+              "WhenOpened": "2025-09-09T12:26:38.375Z"
             },
             {
               "$type": "Document",
@@ -204,8 +198,7 @@
               "RelativeToolTip": "babel.config.js",
               "ViewState": "AgIAAAAAAAAAAAAAAAAAAAYAAAACAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001646|",
-              "WhenOpened": "2025-09-15T06:42:05.105Z",
-              "EditorCaption": ""
+              "WhenOpened": "2025-09-15T06:42:05.105Z"
             },
             {
               "$type": "Document",
