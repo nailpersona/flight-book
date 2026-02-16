@@ -2,6 +2,11 @@ import { supabase } from './supabase';
 
 const MU_TYPES = ['ДПМУ', 'ДСМУ', 'ДВМП', 'НПМУ', 'НСМУ', 'НВМП'];
 
+// Конвертує Date у рядок YYYY-MM-DD без зміщення timezone
+function dateToISO(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 function formatDate(dateStr) {
   if (!dateStr) return '';
   const d = new Date(dateStr);
@@ -117,7 +122,7 @@ export async function getBreaksDataFromSupabase(pib) {
         if (lastDate && allowed) {
           const exp = new Date(lastDate);
           exp.setDate(exp.getDate() + allowed);
-          expiryDate = exp.toISOString().split('T')[0];
+          expiryDate = dateToISO(exp);
         }
         items.push({
           aircraft: acName,
@@ -245,7 +250,7 @@ export async function getBreaksDataFromSupabase(pib) {
           if (lastDate && allowedDays) {
             const exp = new Date(lastDate);
             exp.setDate(exp.getDate() + allowedDays);
-            expiryDate = exp.toISOString().split('T')[0];
+            expiryDate = dateToISO(exp);
           }
           const color = lastDate ? computeColor(lastDate, allowedDays) : 'gray';
           return {
@@ -319,7 +324,7 @@ export async function getBreaksDataFromSupabase(pib) {
       if (!dateStr) return null;
       const d = new Date(dateStr);
       d.setMonth(d.getMonth() + m);
-      return d.toISOString().split('T')[0];
+      return dateToISO(d);
     }
 
     const llkExpiry = addMonths(llkDate, 12);
@@ -506,7 +511,7 @@ export async function updateAnnualCheckDateInSupabase(pib, checkType, dateStr) {
     const monthsValid = 12;
     const d = new Date(isoDate);
     d.setMonth(d.getMonth() + monthsValid);
-    const expiryDate = d.toISOString().split('T')[0];
+    const expiryDate = dateToISO(d);
 
     const { data: existing } = await supabase
       .from('annual_checks')
@@ -568,7 +573,7 @@ export async function updateCommissionDateInSupabase(pib, category, dateStr) {
     } else {
       d.setDate(d.getDate() + cType.days);
     }
-    const expiryDate = d.toISOString().split('T')[0];
+    const expiryDate = dateToISO(d);
 
     const { data: existing } = await supabase
       .from('commission_dates')
@@ -602,26 +607,240 @@ export async function updateCommissionDateInSupabase(pib, category, dateStr) {
   }
 }
 
+// Update MU break date by user ID and aircraft type
+export async function updateMuBreakDateInSupabase(userId, muCondition, aircraftTypeId, dateStr) {
+  try {
+    const parts = dateStr.split('.');
+    if (parts.length !== 3) return { ok: false, error: 'Невірний формат дати' };
+    const isoDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
+
+    const { data: existing } = await supabase
+      .from('mu_break_dates')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('mu_condition', muCondition)
+      .eq('aircraft_type_id', aircraftTypeId)
+      .limit(1);
+
+    if (existing && existing.length > 0) {
+      const { error } = await supabase
+        .from('mu_break_dates')
+        .update({ last_date: isoDate })
+        .eq('id', existing[0].id);
+      if (error) throw error;
+    } else {
+      const { error } = await supabase
+        .from('mu_break_dates')
+        .insert({
+          user_id: userId,
+          mu_condition: muCondition,
+          aircraft_type_id: aircraftTypeId,
+          last_date: isoDate,
+        });
+      if (error) throw error;
+    }
+
+    return { ok: true };
+  } catch (error) {
+    console.error('updateMuBreakDateInSupabase error:', error);
+    return { ok: false, error: String(error.message || error) };
+  }
+}
+
+// Update LP break date by user ID
+export async function updateLpBreakDateById(userId, lpTypeNormalized, aircraftTypeId, dateStr) {
+  try {
+    const parts = dateStr.split('.');
+    if (parts.length !== 3) return { ok: false, error: 'Невірний формат дати' };
+    const isoDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
+
+    // First try to find with exact aircraft_type_id
+    let query = supabase
+      .from('lp_break_dates')
+      .select('id, aircraft_type_id')
+      .eq('user_id', userId)
+      .eq('lp_type', lpTypeNormalized);
+
+    if (aircraftTypeId) {
+      query = query.eq('aircraft_type_id', aircraftTypeId);
+    } else {
+      query = query.is('aircraft_type_id', null);
+    }
+
+    let { data: existing } = await query.limit(1);
+
+    // If not found and aircraftTypeId is set, also check for null aircraft_type_id
+    if ((!existing || existing.length === 0) && aircraftTypeId) {
+      const { data: existingNull } = await supabase
+        .from('lp_break_dates')
+        .select('id, aircraft_type_id')
+        .eq('user_id', userId)
+        .eq('lp_type', lpTypeNormalized)
+        .is('aircraft_type_id', null)
+        .limit(1);
+      if (existingNull && existingNull.length > 0) {
+        existing = existingNull;
+      }
+    }
+
+    if (existing && existing.length > 0) {
+      const { error } = await supabase
+        .from('lp_break_dates')
+        .update({ last_date: isoDate })
+        .eq('id', existing[0].id);
+      if (error) throw error;
+    } else {
+      const row = { user_id: userId, lp_type: lpTypeNormalized, last_date: isoDate };
+      // For new records, don't set aircraft_type_id if it's a general LP type
+      // This allows the record to be shared across all aircraft types
+      const { error } = await supabase
+        .from('lp_break_dates')
+        .insert(row);
+      if (error) throw error;
+    }
+
+    return { ok: true };
+  } catch (error) {
+    console.error('updateLpBreakDateById error:', error);
+    return { ok: false, error: String(error.message || error) };
+  }
+}
+
+// Update annual check date by user ID
+export async function updateAnnualCheckDateById(userId, checkType, dateStr) {
+  try {
+    const parts = dateStr.split('.');
+    if (parts.length !== 3) return { ok: false, error: 'Невірний формат дати' };
+    const isoDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
+
+    const monthsValid = 12;
+    const d = new Date(isoDate);
+    d.setMonth(d.getMonth() + monthsValid);
+    const expiryDate = dateToISO(d);
+
+    const { data: existing } = await supabase
+      .from('annual_checks')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('check_type', checkType)
+      .limit(1);
+
+    if (existing && existing.length > 0) {
+      const { error } = await supabase
+        .from('annual_checks')
+        .update({ check_date: isoDate, expiry_date: expiryDate })
+        .eq('id', existing[0].id);
+      if (error) throw error;
+    } else {
+      const { error } = await supabase
+        .from('annual_checks')
+        .insert({
+          user_id: userId,
+          check_type: checkType,
+          check_date: isoDate,
+          months_valid: monthsValid,
+          expiry_date: expiryDate,
+        });
+      if (error) throw error;
+    }
+
+    return { ok: true };
+  } catch (error) {
+    console.error('updateAnnualCheckDateById error:', error);
+    return { ok: false, error: String(error.message || error) };
+  }
+}
+
+// Update commission date by user ID
+export async function updateCommissionDateById(userId, categoryName, dateStr, aircraftTypeId = null) {
+  try {
+    const parts = dateStr.split('.');
+    if (parts.length !== 3) return { ok: false, error: 'Невірний формат дати' };
+    const isoDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
+
+    const { data: cType, error: ctErr } = await supabase
+      .from('commission_types')
+      .select('id, days')
+      .eq('name', categoryName)
+      .single();
+
+    if (ctErr || !cType) return { ok: false, error: 'Тип комісування не знайдено: ' + categoryName };
+
+    const d = new Date(isoDate);
+    if (categoryName === 'ЛЛК') {
+      d.setMonth(d.getMonth() + 12);
+    } else if (categoryName === 'УМО') {
+      d.setMonth(d.getMonth() + 6);
+    } else {
+      d.setDate(d.getDate() + cType.days);
+    }
+    const expiryDate = dateToISO(d);
+
+    // Для Ст. 205 ПРІАЗ шукаємо з aircraftTypeId, для інших - без
+    let query = supabase
+      .from('commission_dates')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('commission_type_id', cType.id);
+
+    if (aircraftTypeId) {
+      query = query.eq('aircraft_type_id', aircraftTypeId);
+    } else {
+      query = query.is('aircraft_type_id', null);
+    }
+
+    const { data: existing } = await query.limit(1);
+
+    if (existing && existing.length > 0) {
+      const { error } = await supabase
+        .from('commission_dates')
+        .update({ commission_date: isoDate, expiry_date: expiryDate })
+        .eq('id', existing[0].id);
+      if (error) throw error;
+    } else {
+      const insertData = {
+        user_id: userId,
+        commission_type_id: cType.id,
+        commission_date: isoDate,
+        expiry_date: expiryDate,
+      };
+      if (aircraftTypeId) {
+        insertData.aircraft_type_id = aircraftTypeId;
+      }
+      const { error } = await supabase
+        .from('commission_dates')
+        .insert(insertData);
+      if (error) throw error;
+    }
+
+    return { ok: true };
+  } catch (error) {
+    console.error('updateCommissionDateById error:', error);
+    return { ok: false, error: String(error.message || error) };
+  }
+}
+
 /* ── Readiness dashboard: all pilots overview (Excel format with dates per aircraft) ── */
 
 const MU_TYPES_LIST = ['ДПМУ', 'ДСМУ', 'ДВМП', 'НПМУ', 'НСМУ', 'НВМП'];
 
 // LP Break columns (Перерви за видами ЛП) - 14 types
+// Match functions must find data in lp_break_dates table
 const LP_BREAK_COL_DEFS = [
   { label: 'Польоти на Нмал', match: n => n === 'мала_висота' || n.startsWith('малі_висоти') },
   { label: 'Польоти на СП', match: n => n.startsWith('складний_пілотаж') },
-  { label: 'Повітр. бій з ударними', match: n => n === 'повітряний_бій_з_ударними' },
-  { label: 'Повітр. бій з винищ.', match: n => n === 'повітряний_бій_з_винищувачами' },
-  { label: 'Польоти на ГМВ (з ОНБ)', match: n => n === 'гмв_онб' },
+  { label: 'Повітр. бій з ударними', match: n => n === 'пб_ударні' || n === 'повітряний_бій_з_ударними' },
+  { label: 'Повітр. бій з винищ.', match: n => n === 'пб_винищувачі' || n === 'повітряний_бій_з_винищувачами' },
+  { label: 'Польоти на ГМВ (з ОНБ)', match: n => n === 'гмв_онб' || n === 'гр_мв_онб' },
   { label: 'Польоти парою', match: n => n.startsWith('групова_злітаність') || n === 'група' },
   { label: 'Польоти на БЗ', match: n => n === 'бойове_застосування' },
-  { label: 'БЗ по НЦ з ПВМ', match: n => n === 'бз_нц_прості' },
-  { label: 'БЗ по НЦ з СВМ', match: n => n === 'бз_нц_складні' },
-  { label: 'ПБ за нешвидк. ПЦ', match: n => n === 'пб_нешвидкісні_пц' },
+  { label: 'БЗ по НЦ з ПВМ', match: n => n === 'бз_нц_прості' || n === 'атаки_пвм' },
+  { label: 'БЗ по НЦ з СВМ', match: n => n === 'бз_нц_складні' || n === 'атаки_свм' },
+  { label: 'ПБ за нешвидк. ПЦ', match: n => n === 'пб_нешвидкісні' || n === 'пб_нешвидкісні_пц' },
   { label: 'Десантування', match: n => n.startsWith('десантування') },
   { label: 'Продовж. зліт/посадка', match: n => n === 'продовжений_зліт' },
   { label: 'Пошуково-рятувальні', match: n => n === 'пошуково_рятувальні' },
-  { label: 'Зовнішня підвіска/евак.', match: n => n === 'зовнішня_підвіска_евакуація' },
+  { label: 'Зовнішня підвіска/евак.', match: n => n === 'зовнішня_підвіска' || n === 'зовнішня_підвіска_евакуація' },
 ];
 
 const COMM_TYPES_LIST = ['Аварійне залишення', 'Ст. 205 ПРІАЗ', 'ЛЛК', 'УМО', 'Відпустка', 'Стрибки з парашутом'];
@@ -651,7 +870,7 @@ export async function getAllPilotsReadinessData() {
       supabase.from('users').select('id, name, rank, position, military_class, test_class, coefficient, sort_order, role').order('sort_order'),
       supabase.from('mu_break_dates').select('user_id, aircraft_type_id, mu_condition, last_date'),
       supabase.from('lp_break_dates').select('user_id, lp_type, last_date, aircraft_type_id'),
-      supabase.from('commission_dates').select('user_id, commission_date, expiry_date, commission_type_id, commission_types(name, days)'),
+      supabase.from('commission_dates').select('user_id, commission_date, expiry_date, commission_type_id, aircraft_type_id, commission_types(name, days)'),
       supabase.from('annual_checks').select('user_id, check_type, check_date, expiry_date'),
       supabase.from('break_periods_mu').select('*'),
       supabase.from('break_periods_lp').select('lp_type_normalized, military_class, months, kbp_document'),
@@ -659,6 +878,8 @@ export async function getAllPilotsReadinessData() {
       supabase.from('aircraft_kbp_mapping').select('aircraft_type_id, kbp_document'),
       supabase.from('user_aircraft').select('user_id, aircraft_type_id'),
     ]);
+
+    console.log('lp_break_dates loaded:', lpDatesRes.data?.filter(d => d.lp_type === 'десантування'));
 
     const users = usersRes.data || [];
     const allMuDates = muDatesRes.data || [];
@@ -744,7 +965,7 @@ export async function getAllPilotsReadinessData() {
         const lpBreak = {};
         LP_BREAK_COL_DEFS.forEach(col => {
           const entry = lpDates.find(e =>
-            e.aircraft_type_id === acId && col.match(e.lp_type)
+            (e.aircraft_type_id === acId || e.aircraft_type_id === null) && col.match(e.lp_type)
           );
           const months = getLpBreakMonths(col.label, acId);
           lpBreak[col.label] = {
@@ -753,10 +974,21 @@ export async function getAllPilotsReadinessData() {
           };
         });
 
-        // Commission dates (not per aircraft, but overall for pilot)
+        // Commission dates - Ст. 205 ПРІАЗ per aircraft, others overall for pilot
         const comm = {};
         COMM_TYPES_LIST.forEach(ct => {
-          const entry = commDates.find(e => e.commission_types?.name === ct);
+          let entry;
+          if (ct === 'Ст. 205 ПРІАЗ') {
+            // Для Ст. 205 ПРІАЗ шукаємо за конкретним типом ПС
+            entry = commDates.find(e =>
+              e.commission_types?.name === ct && e.aircraft_type_id === acId
+            );
+          } else {
+            // Для інших - без прив'язки до типу ПС
+            entry = commDates.find(e =>
+              e.commission_types?.name === ct && !e.aircraft_type_id
+            );
+          }
           comm[ct] = {
             date: fmtDate(entry?.commission_date),
             color: entry ? computeColorFromExpiry(entry.expiry_date) : 'gray'
@@ -775,6 +1007,7 @@ export async function getAllPilotsReadinessData() {
 
         acData.push({
           name: acName,
+          aircraftTypeId: acId,
           mu, lpBreak, comm, annual
         });
       });
@@ -814,7 +1047,7 @@ export async function getAllPilotsReadinessData() {
       let worstStatus = 'gray';
       aircraft.forEach(ac => {
         if (!ac) return;
-        [...Object.values(ac.mu), ...Object.values(ac.lp), ...Object.values(ac.comm), ...Object.values(ac.annual)].forEach(c => {
+        [...Object.values(ac.mu), ...Object.values(ac.lpBreak), ...Object.values(ac.comm), ...Object.values(ac.annual)].forEach(c => {
           if (c.color !== 'gray') worstStatus = worstColor(worstStatus, c.color);
         });
       });
@@ -841,6 +1074,136 @@ export async function getAllPilotsReadinessData() {
     return { ok: true, data: { pilots, summary } };
   } catch (error) {
     console.error('getAllPilotsReadinessData error:', error);
+    return { ok: false, error: String(error.message || error) };
+  }
+}
+
+// ── Delete functions for clearing dates ──
+
+export async function deleteMuBreakDateById(userId, muCondition, aircraftTypeId) {
+  try {
+    const { error } = await supabase
+      .from('mu_break_dates')
+      .delete()
+      .eq('user_id', userId)
+      .eq('mu_condition', muCondition)
+      .eq('aircraft_type_id', aircraftTypeId);
+    if (error) throw error;
+    return { ok: true };
+  } catch (error) {
+    console.error('deleteMuBreakDateById error:', error);
+    return { ok: false, error: String(error.message || error) };
+  }
+}
+
+export async function deleteLpBreakDateById(userId, lpTypeNormalized, aircraftTypeId) {
+  try {
+    console.log('deleteLpBreakDateById params:', { userId, lpTypeNormalized, aircraftTypeId });
+
+    // Спочатку шукаємо запис для видалення
+    let findQuery = supabase
+      .from('lp_break_dates')
+      .select('id, aircraft_type_id')
+      .eq('user_id', userId)
+      .eq('lp_type', lpTypeNormalized);
+
+    if (aircraftTypeId) {
+      findQuery = findQuery.eq('aircraft_type_id', aircraftTypeId);
+    } else {
+      findQuery = findQuery.is('aircraft_type_id', null);
+    }
+
+    let { data: existing } = await findQuery.limit(1);
+    console.log('Found with exact aircraftTypeId:', existing);
+
+    // Якщо не знайдено з конкретним aircraftTypeId, шукаємо з null
+    if ((!existing || existing.length === 0) && aircraftTypeId) {
+      const { data: existingNull } = await supabase
+        .from('lp_break_dates')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('lp_type', lpTypeNormalized)
+        .is('aircraft_type_id', null)
+        .limit(1);
+      console.log('Found with null aircraftTypeId:', existingNull);
+      if (existingNull && existingNull.length > 0) {
+        existing = existingNull;
+      }
+    }
+
+    // Якщо все ще не знайдено - шукаємо будь-який запис з цим lp_type
+    if (!existing || existing.length === 0) {
+      const { data: anyRecord } = await supabase
+        .from('lp_break_dates')
+        .select('id, aircraft_type_id, lp_type')
+        .eq('user_id', userId)
+        .eq('lp_type', lpTypeNormalized)
+        .limit(10);
+      console.log('Any record with this lp_type:', anyRecord);
+    }
+
+    if (existing && existing.length > 0) {
+      const { error, data, count } = await supabase
+        .from('lp_break_dates')
+        .delete()
+        .eq('id', existing[0].id)
+        .select('id');
+      console.log('Delete response:', { error, data, count });
+      if (error) throw error;
+      console.log('Deleted successfully:', existing[0].id);
+    } else {
+      console.log('No record found to delete');
+    }
+
+    return { ok: true };
+  } catch (error) {
+    console.error('deleteLpBreakDateById error:', error);
+    return { ok: false, error: String(error.message || error) };
+  }
+}
+
+export async function deleteAnnualCheckDateById(userId, checkType) {
+  try {
+    const { error } = await supabase
+      .from('annual_checks')
+      .delete()
+      .eq('user_id', userId)
+      .eq('check_type', checkType);
+    if (error) throw error;
+    return { ok: true };
+  } catch (error) {
+    console.error('deleteAnnualCheckDateById error:', error);
+    return { ok: false, error: String(error.message || error) };
+  }
+}
+
+export async function deleteCommissionDateById(userId, categoryName, aircraftTypeId = null) {
+  try {
+    const { data: cType, error: ctErr } = await supabase
+      .from('commission_types')
+      .select('id')
+      .eq('name', categoryName)
+      .single();
+
+    if (ctErr || !cType) return { ok: false, error: 'Тип комісування не знайдено: ' + categoryName };
+
+    let query = supabase
+      .from('commission_dates')
+      .delete()
+      .eq('user_id', userId)
+      .eq('commission_type_id', cType.id);
+
+    if (aircraftTypeId) {
+      query = query.eq('aircraft_type_id', aircraftTypeId);
+    } else {
+      query = query.is('aircraft_type_id', null);
+    }
+
+    const { error } = await query;
+    if (error) throw error;
+    return { ok: true };
+  } catch (error) {
+    console.error('deleteCommissionDateById error:', error);
     return { ok: false, error: String(error.message || error) };
   }
 }

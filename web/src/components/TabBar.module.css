@@ -53,3 +53,10 @@
   font-size: 10px;
   font-weight: 400;
 }
+
+/* Print - hide TabBar */
+@media print {
+  .header {
+    display: none !important;
+  }
+}

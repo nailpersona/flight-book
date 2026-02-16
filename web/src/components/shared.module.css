@@ -780,3 +780,79 @@
   background: #F3F4F6;
   color: #111827;
 }
+
+/* Crew styles */
+.addCrewBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px;
+  margin-top: 8px;
+  border-radius: 12px;
+  background: #F9FAFB;
+  border: 1px dashed #D1D5DB;
+  cursor: pointer;
+}
+.addCrewBtnText {
+  font-size: 15px;
+  font-weight: 400;
+  color: #6B7280;
+}
+.crewList {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.crewItem {
+  display: flex;
+  align-items: center;
+  background: #F9FAFB;
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+.crewRole {
+  font-size: 13px;
+  font-weight: 400;
+  color: #6B7280;
+  width: 110px;
+}
+.crewName {
+  font-size: 14px;
+  font-weight: 400;
+  color: #111827;
+  flex: 1;
+}
+.crewRemoveBtn {
+  font-size: 14px;
+  color: #9CA3AF;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  line-height: 1;
+}
+.crewModalLabel {
+  font-size: 13px;
+  font-weight: 400;
+  color: #6B7280;
+  margin-bottom: 4px;
+}
+.crewModalItem {
+  display: flex;
+  align-items: center;
+  padding: 4px 0;
+}
+.crewModalRole {
+  font-size: 14px;
+  font-weight: 400;
+  color: #6B7280;
+  width: 120px;
+}
+.crewModalName {
+  font-size: 14px;
+  font-weight: 400;
+  color: #111827;
+  flex: 1;
+}

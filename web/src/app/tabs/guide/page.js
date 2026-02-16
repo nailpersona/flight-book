@@ -1,6 +1,6 @@
 'use client';
-import { useEffect, useState } from 'react';
-import { IoChevronBackOutline, IoChevronForwardOutline, IoDocumentTextOutline, IoChevronDownOutline, IoAirplane } from 'react-icons/io5';
+import { useEffect, useState, useRef } from 'react';
+import { IoChevronBackOutline, IoChevronForwardOutline, IoDocumentTextOutline, IoChevronDownOutline, IoAirplane, IoSearchOutline, IoCloseOutline } from 'react-icons/io5';
 import { supabase } from '../../../lib/supabase';
 import s from '../../../components/shared.module.css';
 
@@ -15,8 +15,28 @@ export default function GuidePage() {
   const [loading, setLoading] = useState(true);
   const [breadcrumb, setBreadcrumb] = useState([]);
 
+  // Search state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [showSearchResults, setShowSearchResults] = useState(false);
+  const searchTimeoutRef = useRef(null);
+  const searchInputRef = useRef(null);
+
   useEffect(() => {
     loadDocuments();
+  }, []);
+
+  // Close search results when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (searchInputRef.current && !searchInputRef.current.closest('.search-container')?.contains(e.target)) {
+        setShowSearchResults(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   const loadDocuments = async () => {
@@ -24,9 +44,188 @@ export default function GuidePage() {
     const { data, error } = await supabase
       .from('guide_documents')
       .select('*')
+      .eq('is_visible', true)   // Тільки видимі документи
       .order('order_num');
     if (!error && data) setDocuments(data);
     setLoading(false);
+  };
+
+  // Search function with debounce
+  const performSearch = async (query) => {
+    if (!query || query.trim().length < 2) {
+      setSearchResults([]);
+      setShowSearchResults(false);
+      return;
+    }
+
+    setIsSearching(true);
+    setShowSearchResults(true);
+
+    const searchTerm = query.trim();
+
+    // Search in title and content using ILIKE
+    const { data, error } = await supabase
+      .from('guide_sections')
+      .select('id, title, content, document_id, guide_documents(title_short, title)')
+      .or(`title.ilike.%${searchTerm}%,content.ilike.%${searchTerm}%`)
+      .limit(15);
+
+    if (!error && data) {
+      // Process results to create excerpts
+      const results = data.map(section => {
+        let excerpt = '';
+        const content = section.content || '';
+        const title = section.title || '';
+
+        // Find the search term position in content
+        const contentLower = content.toLowerCase();
+        const searchTermLower = searchTerm.toLowerCase();
+        const pos = contentLower.indexOf(searchTermLower);
+
+        if (pos !== -1) {
+          // Get context around the match (50 chars before and 150 after)
+          const start = Math.max(0, pos - 50);
+          const end = Math.min(content.length, pos + searchTerm.length + 150);
+          excerpt = (start > 0 ? '...' : '') +
+                    content.substring(start, end) +
+                    (end < content.length ? '...' : '');
+        } else if (title.toLowerCase().includes(searchTermLower)) {
+          // If match is in title, show beginning of content
+          excerpt = content.substring(0, 150) + (content.length > 150 ? '...' : '');
+        }
+
+        return {
+          id: section.id,
+          title: section.title,
+          excerpt,
+          documentId: section.document_id,
+          documentTitle: section.guide_documents?.title_short || 'Документ'
+        };
+      });
+
+      setSearchResults(results);
+    }
+
+    setIsSearching(false);
+  };
+
+  const handleSearchChange = (e) => {
+    const value = e.target.value;
+    setSearchQuery(value);
+
+    // Debounce search
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    if (value.trim().length < 2) {
+      setSearchResults([]);
+      setShowSearchResults(false);
+      return;
+    }
+
+    searchTimeoutRef.current = setTimeout(() => {
+      performSearch(value);
+    }, 300);
+  };
+
+  const handleSearchFocus = () => {
+    if (searchQuery.trim().length >= 2) {
+      setShowSearchResults(true);
+    }
+  };
+
+  const clearSearch = () => {
+    setSearchQuery('');
+    setSearchResults([]);
+    setShowSearchResults(false);
+    if (searchInputRef.current) {
+      searchInputRef.current.focus();
+    }
+  };
+
+  const handleSearchResultClick = async (result) => {
+    // Find the document
+    const doc = documents.find(d => d.id === result.documentId);
+    if (doc) {
+      // Navigate to the document
+      setSelectedDoc(doc);
+      setBreadcrumb([{ title: doc.title_short, id: null }]);
+
+      if (doc.id === 1 || doc.id === 3) {
+        // Load sections and find the target section
+        const { data, error } = await supabase
+          .from('guide_sections')
+          .select('*')
+          .eq('document_id', doc.id)
+          .order('order_num');
+
+        if (!error && data) {
+          // Build tree structure
+          const sectionMap = new Map(data.map(s => [s.id, s]));
+
+          const getChildren = (parentId) => {
+            return data
+              .filter(s => s.parent_id === parentId)
+              .map(s => ({
+                ...s,
+                children: getChildren(s.id)
+              }));
+          };
+
+          const rootSections = data.filter(s => s.parent_id === null);
+          const tree = rootSections.map(section => ({
+            ...section,
+            children: getChildren(section.id)
+          }));
+
+          setSectionTree(tree);
+          setSections(tree);
+
+          // Find the target section and expand path to it
+          const targetSection = data.find(s => s.id === result.id);
+          if (targetSection) {
+            // Expand all parent sections
+            const parentsToExpand = new Set();
+            let current = targetSection;
+            while (current.parent_id) {
+              parentsToExpand.add(current.parent_id);
+              current = sectionMap.get(current.parent_id);
+            }
+            setExpandedSections(parentsToExpand);
+
+            // Check if section has children - show sections view, otherwise show content
+            const hasChildren = data.some(s => s.parent_id === targetSection.id);
+            if (!hasChildren) {
+              setSelectedSection(targetSection);
+              setView('content');
+            } else {
+              setView('sections');
+            }
+          } else {
+            setView('sections');
+          }
+        }
+      } else {
+        setView('in_development');
+      }
+    }
+
+    // Clear search
+    setSearchQuery('');
+    setSearchResults([]);
+    setShowSearchResults(false);
+  };
+
+  // Get all parent IDs for a section to expand them
+  const getPathToSection = (sectionId, sections) => {
+    const path = [];
+    let current = sections.find(s => s.id === sectionId);
+    while (current) {
+      path.unshift(current.id);
+      current = sections.find(s => s.children?.some(c => c.id === current.id));
+    }
+    return path;
   };
 
   const loadSectionsTree = async (docId) => {
@@ -67,8 +266,8 @@ export default function GuidePage() {
     setSelectedDoc(doc);
     setBreadcrumb([{ title: doc.title_short, id: null }]);
 
-    // Check if this is ПВП ДАУ (id=1) - it has sections
-    if (doc.id === 1) {
+    // Check if this document has sections (ПВП ДАУ id=1, КЛПВ id=3)
+    if (doc.id === 1 || doc.id === 3) {
       loadSectionsTree(doc.id);
       setView('sections');
     } else {
@@ -192,6 +391,241 @@ export default function GuidePage() {
     return 'Керівні документи';
   };
 
+  // Handle internal section links
+  const handleSectionLink = async (sectionId) => {
+    const { data, error } = await supabase
+      .from('guide_sections')
+      .select('*, guide_documents!inner(id)')
+      .eq('id', sectionId)
+      .single();
+
+    if (!error && data) {
+      // Find parent document
+      const doc = documents.find(d => d.id === data.document_id);
+      if (doc) {
+        setSelectedDoc(doc);
+        setBreadcrumb([{ title: doc.title_short, id: null }]);
+
+        // Load sections tree for this document
+        const { data: sectionsData } = await supabase
+          .from('guide_sections')
+          .select('*')
+          .eq('document_id', doc.id)
+          .order('order_num');
+
+        if (sectionsData) {
+          const rootSections = sectionsData.filter(s => s.parent_id === null);
+          const sectionMap = new Map(sectionsData.map(s => [s.id, s]));
+
+          const getChildren = (parentId) => {
+            return sectionsData
+              .filter(s => s.parent_id === parentId)
+              .map(s => ({
+                ...s,
+                children: getChildren(s.id)
+              }));
+          };
+
+          const tree = rootSections.map(section => ({
+            ...section,
+            children: getChildren(section.id)
+          }));
+
+          setSectionTree(tree);
+          setSections(tree);
+
+          // Expand path to target section
+          const parentsToExpand = new Set();
+          let current = data;
+          while (current.parent_id) {
+            parentsToExpand.add(current.parent_id);
+            current = sectionMap.get(current.parent_id);
+          }
+          setExpandedSections(parentsToExpand);
+
+          // Show content
+          setSelectedSection(data);
+          setView('content');
+        }
+      }
+    }
+  };
+
+  // Render content with markdown-like formatting and links
+  const renderContent = (content) => {
+    if (!content) return null;
+
+    // Split by lines for processing
+    const lines = content.split('\n');
+    const elements = [];
+    let currentParagraph = [];
+    let inTable = false;
+    let tableRows = [];
+
+    const flushParagraph = () => {
+      if (currentParagraph.length > 0) {
+        const text = currentParagraph.join('\n');
+        elements.push(
+          <p key={`p-${elements.length}`} style={{ marginBottom: 12, whiteSpace: 'pre-wrap' }}>
+            {renderInlineFormatting(text)}
+          </p>
+        );
+        currentParagraph = [];
+      }
+    };
+
+    const flushTable = () => {
+      if (tableRows.length > 0) {
+        elements.push(
+          <div key={`table-${elements.length}`} style={{
+            overflowX: 'auto',
+            marginBottom: 12,
+            border: '1px solid #E5E7EB',
+            borderRadius: 8
+          }}>
+            <table style={{
+              width: '100%',
+              borderCollapse: 'collapse',
+              fontSize: 13
+            }}>
+              {tableRows.map((row, rowIdx) => (
+                <tr key={rowIdx} style={{
+                  borderBottom: rowIdx < tableRows.length - 1 ? '1px solid #E5E7EB' : 'none',
+                  background: rowIdx === 0 ? '#F9FAFB' : '#FFFFFF'
+                }}>
+                  {row.map((cell, cellIdx) => (
+                    <td key={cellIdx} style={{
+                      padding: '8px 12px',
+                      borderRight: cellIdx < row.length - 1 ? '1px solid #E5E7EB' : 'none',
+                      fontWeight: rowIdx === 0 ? 400 : 400,
+                      textAlign: 'center',
+                      minWidth: 60
+                    }}>
+                      {renderInlineFormatting(cell)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </table>
+          </div>
+        );
+        tableRows = [];
+        inTable = false;
+      }
+    };
+
+    const renderInlineFormatting = (text) => {
+      // Handle section links: [text](#section-id)
+      const parts = [];
+      let lastIndex = 0;
+
+      // Pattern for section links
+      const linkPattern = /\[([^\]]+)\]\(#(\d+)\)/g;
+      let match;
+
+      while ((match = linkPattern.exec(text)) !== null) {
+        // Add text before link
+        if (match.index > lastIndex) {
+          parts.push(renderBoldAndItalic(text.substring(lastIndex, match.index)));
+        }
+
+        // Add link
+        const linkText = match[1];
+        const sectionId = parseInt(match[2]);
+        parts.push(
+          <span
+            key={`link-${match.index}`}
+            onClick={() => handleSectionLink(sectionId)}
+            style={{
+              color: '#3B82F6',
+              textDecoration: 'underline',
+              cursor: 'pointer'
+            }}
+          >
+            {linkText}
+          </span>
+        );
+        lastIndex = match.index + match[0].length;
+      }
+
+      // Add remaining text
+      if (lastIndex < text.length) {
+        parts.push(renderBoldAndItalic(text.substring(lastIndex)));
+      }
+
+      return parts.length > 0 ? parts : text;
+    };
+
+    const renderBoldAndItalic = (text) => {
+      const parts = [];
+      let lastIndex = 0;
+
+      // Pattern for bold: **text**
+      const boldPattern = /\*\*([^*]+)\*\*/g;
+      let match;
+
+      while ((match = boldPattern.exec(text)) !== null) {
+        if (match.index > lastIndex) {
+          parts.push(text.substring(lastIndex, match.index));
+        }
+        parts.push(
+          <strong key={`bold-${match.index}`} style={{ fontWeight: 400 }}>
+            {match[1]}
+          </strong>
+        );
+        lastIndex = match.index + match[0].length;
+      }
+
+      if (lastIndex < text.length) {
+        parts.push(text.substring(lastIndex));
+      }
+
+      return parts.length > 0 ? parts : text;
+    };
+
+    // Process each line
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+
+      // Check for table row (starts and ends with |)
+      if (line.startsWith('|') && line.endsWith('|')) {
+        flushParagraph();
+        inTable = true;
+
+        // Skip separator rows (|---|---|)
+        if (line.match(/^\|[-\s|:]+\|$/)) {
+          continue;
+        }
+
+        // Parse table cells
+        const cells = line.split('|')
+          .slice(1, -1)
+          .map(cell => cell.trim());
+        tableRows.push(cells);
+        continue;
+      }
+
+      // Not a table line
+      if (inTable) {
+        flushTable();
+      }
+
+      // Empty line = paragraph break
+      if (line.trim() === '') {
+        flushParagraph();
+        continue;
+      }
+
+      currentParagraph.push(line);
+    }
+
+    // Flush remaining content
+    flushParagraph();
+    flushTable();
+
+    return elements;
+  };
+
   return (
     <div className={s.page}>
       <div className={s.topBar}>
@@ -213,33 +647,154 @@ export default function GuidePage() {
         </div>
       ) : view === 'documents' ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {documents.map((doc) => (
-            <div
-              key={doc.id}
-              onClick={() => handleDocumentClick(doc)}
-              style={{
-                background: '#FFFFFF',
-                borderRadius: 14,
-                padding: '16px 14px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 12,
-                border: '1px solid #E5E7EB',
-                cursor: 'pointer',
-              }}
-            >
-              <IoDocumentTextOutline size={24} color="#6B7280" />
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 15, fontWeight: 400, color: '#111827' }}>
-                  {doc.title_short}
-                </div>
-                <div style={{ fontSize: 13, fontWeight: 400, color: '#6B7280', marginTop: 2 }}>
-                  {doc.title}
-                </div>
-              </div>
-              <IoChevronForwardOutline size={20} color="#9CA3AF" />
+          {/* Search input */}
+          <div className="search-container" style={{ position: 'relative' }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              background: '#FFFFFF',
+              borderRadius: 12,
+              border: '1px solid #E5E7EB',
+              padding: '10px 14px',
+              gap: 10,
+            }}>
+              <IoSearchOutline size={20} color="#9CA3AF" />
+              <input
+                ref={searchInputRef}
+                type="text"
+                value={searchQuery}
+                onChange={handleSearchChange}
+                onFocus={handleSearchFocus}
+                placeholder="Пошук по документах..."
+                style={{
+                  flex: 1,
+                  border: 'none',
+                  outline: 'none',
+                  fontSize: 14,
+                  fontWeight: 400,
+                  color: '#111827',
+                  background: 'transparent',
+                }}
+              />
+              {searchQuery && (
+                <button
+                  onClick={clearSearch}
+                  style={{
+                    border: 'none',
+                    background: 'none',
+                    padding: 0,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                  }}
+                >
+                  <IoCloseOutline size={20} color="#9CA3AF" />
+                </button>
+              )}
             </div>
-          ))}
+
+            {/* Search results dropdown */}
+            {showSearchResults && (
+              <div style={{
+                position: 'absolute',
+                top: '100%',
+                left: 0,
+                right: 0,
+                background: '#FFFFFF',
+                borderRadius: 12,
+                border: '1px solid #E5E7EB',
+                marginTop: 6,
+                maxHeight: 400,
+                overflowY: 'auto',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                zIndex: 100,
+              }}>
+                {isSearching ? (
+                  <div style={{ padding: 16, textAlign: 'center', color: '#6B7280', fontSize: 14, fontWeight: 400 }}>
+                    Пошук...
+                  </div>
+                ) : searchResults.length > 0 ? (
+                  searchResults.map((result) => (
+                    <div
+                      key={result.id}
+                      onClick={() => handleSearchResultClick(result)}
+                      style={{
+                        padding: '12px 14px',
+                        borderBottom: '1px solid #F3F4F6',
+                        cursor: 'pointer',
+                        transition: 'background 0.2s',
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = '#F9FAFB'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <div style={{
+                        fontSize: 13,
+                        fontWeight: 400,
+                        color: '#6366F1',
+                        marginBottom: 4,
+                      }}>
+                        {result.documentTitle}
+                      </div>
+                      <div style={{
+                        fontSize: 14,
+                        fontWeight: 400,
+                        color: '#111827',
+                        marginBottom: 4,
+                      }}>
+                        {result.title}
+                      </div>
+                      {result.excerpt && (
+                        <div style={{
+                          fontSize: 13,
+                          fontWeight: 400,
+                          color: '#6B7280',
+                          lineHeight: 1.4,
+                        }}>
+                          {result.excerpt}
+                        </div>
+                      )}
+                    </div>
+                  ))
+                ) : searchQuery.trim().length >= 2 ? (
+                  <div style={{ padding: 16, textAlign: 'center', color: '#6B7280', fontSize: 14, fontWeight: 400 }}>
+                    Нічого не знайдено
+                  </div>
+                ) : null}
+              </div>
+            )}
+          </div>
+
+          {/* Documents list */}
+          <div style={{ marginTop: 6 }}>
+            {documents.map((doc) => (
+              <div
+                key={doc.id}
+                onClick={() => handleDocumentClick(doc)}
+                style={{
+                  background: '#FFFFFF',
+                  borderRadius: 14,
+                  padding: '16px 14px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  border: '1px solid #E5E7EB',
+                  cursor: 'pointer',
+                  marginBottom: 10,
+                }}
+              >
+                <IoDocumentTextOutline size={24} color="#6B7280" />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 15, fontWeight: 400, color: '#111827' }}>
+                    {doc.title_short}
+                  </div>
+                  <div style={{ fontSize: 13, fontWeight: 400, color: '#6B7280', marginTop: 2 }}>
+                    {doc.title}
+                  </div>
+                </div>
+                <IoChevronForwardOutline size={20} color="#9CA3AF" />
+              </div>
+            ))}
+          </div>
         </div>
       ) : view === 'in_development' ? (
         <div style={{
@@ -265,8 +820,8 @@ export default function GuidePage() {
         </div>
       ) : (
         <div className={s.card} style={{ marginBottom: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 400, color: '#111827', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
-            {selectedSection?.content || ''}
+          <div style={{ fontSize: 14, fontWeight: 400, color: '#111827', lineHeight: 1.6 }}>
+            {renderContent(selectedSection?.content || '')}
           </div>
         </div>
       )}

@@ -1,6 +1,6 @@
 'use client';
 import { useRouter } from 'next/navigation';
-import { IoChevronBack, IoPeopleOutline, IoTreeOutline } from 'react-icons/io5';
+import { IoChevronBack, IoPeopleOutline, IoLayersOutline, IoGridOutline } from 'react-icons/io5';
 import { useAuth } from '../../../lib/auth';
 import s from '../../../components/shared.module.css';
 
@@ -20,14 +20,19 @@ export default function AdminSettingsPage() {
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
-        <button className={s.menuBtn} style={{ width: '80%', justifyContent: 'center', background: '#D9DBDE', borderColor: '#B0B3B8', color: '#555860' }} onClick={() => router.push('/tabs/admin-units')}>
-          <span className={s.menuBtnIcon} style={{ color: '#555860' }}><IoTreeOutline size={18} /></span>
+        <button className={s.menuBtn} style={{ width: '80%', justifyContent: 'center', background: '#D9DBDE', borderColor: '#B0B3B8', color: '#555860' }} onClick={() => router.push('/tabs/admin-positions')}>
+          <span className={s.menuBtnIcon} style={{ color: '#555860' }}><IoLayersOutline size={18} /></span>
           Посади
         </button>
 
         <button className={s.menuBtn} style={{ width: '80%', justifyContent: 'center', background: '#D9DBDE', borderColor: '#B0B3B8', color: '#555860' }} onClick={() => router.push('/tabs/admin-users')}>
           <span className={s.menuBtnIcon} style={{ color: '#555860' }}><IoPeopleOutline size={18} /></span>
           Користувачі
+        </button>
+
+        <button className={s.menuBtn} style={{ width: '80%', justifyContent: 'center', background: '#D9DBDE', borderColor: '#B0B3B8', color: '#555860' }} onClick={() => router.push('/tabs/readiness')}>
+          <span className={s.menuBtnIcon} style={{ color: '#555860' }}><IoGridOutline size={18} /></span>
+          Узагальнення
         </button>
       </div>
     </div>

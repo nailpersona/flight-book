@@ -65,6 +65,108 @@ function FuelPopup({ fuel, onSave }) {
   );
 }
 
+function CrewModal({ visible, aircraftType, roles, showTechnician, pilots, crew, onSave, onClose }) {
+  const [selectedRole, setSelectedRole] = useState('');
+  const [selectedPilot, setSelectedPilot] = useState(null);
+  const [customName, setCustomName] = useState('');
+  const [technicianPilot, setTechnicianPilot] = useState(null);
+  const [technicianCustom, setTechnicianCustom] = useState('');
+
+  const technicianRole = 'Бортовий технік';
+  const isRoleTaken = (role) => crew.some(m => m.role === role);
+  const availableRoles = roles.filter(r => !isRoleTaken(r));
+
+  const handleAddMember = () => {
+    if (!selectedRole) return;
+    const name = customName.trim() || selectedPilot?.name;
+    if (!name) return;
+    const userId = customName.trim() ? null : selectedPilot?.id;
+    onSave([...crew, { role: selectedRole, name, userId }]);
+    setSelectedRole('');
+    setSelectedPilot(null);
+    setCustomName('');
+  };
+
+  const handleAddTechnician = () => {
+    const name = technicianCustom.trim() || technicianPilot?.name;
+    if (!name) return;
+    const userId = technicianCustom.trim() ? null : technicianPilot?.id;
+    const filtered = crew.filter(m => m.role !== technicianRole);
+    onSave([...filtered, { role: technicianRole, name, userId }]);
+    setTechnicianPilot(null);
+    setTechnicianCustom('');
+  };
+
+  return (
+    <Modal visible={visible} onClose={onClose} title={`Додати екіпаж (${aircraftType})`}>
+      {crew.length > 0 && (
+        <div style={{marginBottom:12}}>
+          <div className={s.crewModalLabel}>Додані члени екіпажу:</div>
+          {crew.map((member, idx) => (
+            <div key={idx} className={s.crewModalItem}>
+              <span className={s.crewModalRole}>{member.role}:</span>
+              <span className={s.crewModalName}>{member.name}</span>
+              <button className={s.crewRemoveBtn} onClick={() => onSave(crew.filter((_, i) => i !== idx))}>✕</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {availableRoles.length > 0 && (
+        <>
+          <div className={s.crewModalLabel}>Роль:</div>
+          <select className={s.select} value={selectedRole} onChange={e => setSelectedRole(e.target.value)}>
+            <option value="">Оберіть роль</option>
+            {availableRoles.map(r => <option key={r} value={r}>{r}</option>)}
+          </select>
+        </>
+      )}
+
+      {selectedRole && (
+        <>
+          <div className={s.crewModalLabel} style={{marginTop:8}}>Прізвище:</div>
+          <select className={s.select} value={selectedPilot?.id || ''} onChange={e => {
+            const p = pilots.find(x => x.id === e.target.value);
+            setSelectedPilot(p || null);
+          }}>
+            <option value="">Оберіть зі списку</option>
+            {pilots.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+
+          <div className={s.crewModalLabel} style={{marginTop:8}}>Або введіть вручну:</div>
+          <input className={s.input} placeholder="Прізвище Ім'я" value={customName} onChange={e => setCustomName(e.target.value)} />
+
+          <button className={`${s.btn} ${s.btnDark}`} style={{marginTop:12}} onClick={handleAddMember} disabled={!customName.trim() && !selectedPilot}>
+            Додати
+          </button>
+        </>
+      )}
+
+      {showTechnician && !crew.some(m => m.role === technicianRole) && (
+        <div style={{marginTop:16,paddingTop:12,borderTop:'1px solid #E5E7EB'}}>
+          <div className={s.crewModalLabel}>Бортовий технік:</div>
+          <select className={s.select} value={technicianPilot?.id || ''} onChange={e => {
+            const p = pilots.find(x => x.id === e.target.value);
+            setTechnicianPilot(p || null);
+          }}>
+            <option value="">Оберіть зі списку</option>
+            {pilots.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+
+          <div className={s.crewModalLabel} style={{marginTop:8}}>Або введіть вручну:</div>
+          <input className={s.input} placeholder="Прізвище Ім'я" value={technicianCustom} onChange={e => setTechnicianCustom(e.target.value)} />
+
+          <button className={`${s.btn} ${s.btnDark}`} style={{marginTop:8}} onClick={handleAddTechnician} disabled={!technicianCustom.trim() && !technicianPilot}>
+            Додати техніка
+          </button>
+        </div>
+      )}
+
+      <button className={`${s.btn} ${s.btnSecondary}`} style={{marginTop:16}} onClick={onClose}>Готово</button>
+    </Modal>
+  );
+}
+
 function FlightFeedbackModal({ visible, data, onClose }) {
   const [correcting, setCorrecting] = useState(false);
   const [checkedLp, setCheckedLp] = useState({});
@@ -107,7 +209,8 @@ function FlightFeedbackModal({ visible, data, onClose }) {
         source: 'pilot_feedback', user_id: data.userId,
       });
       for (const lp of correctedLp.filter(lp => !(data.detectedLp || []).includes(lp))) {
-        const flightDate = new Date().toISOString().split('T')[0];
+        const now = new Date();
+        const flightDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
         await supabase.from('lp_break_dates').upsert({ user_id: data.userId, lp_type: lp, last_date: flightDate }, { onConflict: 'user_id,lp_type' });
       }
       onClose();
@@ -190,12 +293,33 @@ export default function MainPage() {
   const [fuel, setFuel] = useState({ airfield: '', amount: '' });
   const [flightPurpose, setFlightPurpose] = useState('');
 
+  // Екіпаж
+  const [showCrewModal, setShowCrewModal] = useState(false);
+  const [crewMembers, setCrewMembers] = useState([]);
+  const [allPilots, setAllPilots] = useState([]);
+
+  const CREW_ROLES_CONFIG = {
+    'Су-27': ['Інструктор', 'В складі екіпажу'],
+    'Міг-29': ['Інструктор', 'В складі екіпажу'],
+    'Л-39': ['Інструктор', 'В складі екіпажу'],
+    'Су-24': ['Штурман', 'Інструктор'],
+    'Мі-8': ['Правий пілот', 'Штурман', 'Інструктор'],
+    'Мі-24': ['Штурман', 'Інструктор'],
+    'Мі-2': ['Правий пілот', 'Штурман', 'Інструктор'],
+  };
+  const HELICOPTER_TECHNICIAN = ['Мі-8'];
+
   useEffect(() => {
     const load = async () => {
       try {
         const { data, error } = await supabase.from('exercises').select('id, number, name, document, task, category, flights_count').order('id');
         if (error) throw error;
         setAllExercises(data || []);
+
+        // Завантажити список пілотів для екіпажу
+        const { data: pilotsData } = await supabase.from('users').select('id, name').order('name');
+        if (pilotsData) setAllPilots(pilotsData.filter(p => p.name));
+
         if (auth?.email) {
           const { data: pilot } = await supabase.from('pilots').select('entry_settings').eq('email', auth.email).maybeSingle();
           if (pilot?.entry_settings) {
@@ -226,8 +350,7 @@ export default function MainPage() {
       if (data.aircraft_types?.name) setTypePs(data.aircraft_types.name);
       const mu = (data.time_of_day || '') + (data.weather_conditions || '');
       if (mu) setTimeDayMu(mu);
-      let ft = data.flight_type || '';
-      if (ft === 'Учбово-тренув.') ft = 'Учбово-тренувальний';
+      const ft = data.flight_type || '';
       if (ft) setFlightType(ft);
       if (data.test_flight_topic) setTestTopic(data.test_flight_topic);
       if (data.document_source) setDocSource(data.document_source);
@@ -259,6 +382,7 @@ export default function MainPage() {
   }, [allExercises, docSource]);
 
   useEffect(() => { setSelectedExercises([]); }, [docSource]);
+  useEffect(() => { setCrewMembers([]); }, [typePs]);
 
   const exercisesText = useMemo(() => {
     return selectedExercises.map(e => {
@@ -280,6 +404,7 @@ export default function MainPage() {
     setTypePs(''); setTimeDayMu(''); setFlightType(''); setTestTopic('');
     setDocSource(''); setSelectedExercises([]); setNalit(''); setCombatApps('');
     setFuel({ airfield: '', amount: '' }); setFlightPurpose('');
+    setCrewMembers([]);
     setEditMode(false); setEditFlightId(null);
   };
 
@@ -298,11 +423,11 @@ export default function MainPage() {
       const { data: atData, error: atErr } = await supabase.from('aircraft_types').select('id').eq('name', typePs).single();
       if (atErr || !atData) throw new Error('Тип ПС не знайдено');
 
-      let dbFlightType = flightType;
-      if (flightType === 'Учбово-тренувальний') dbFlightType = 'Учбово-тренув.';
+      const dbFlightType = flightType;
 
+      const dateStr = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`;
       const flightPayload = {
-        user_id: userData.id, date: dateObj.toISOString().split('T')[0], aircraft_type_id: atData.id,
+        user_id: userData.id, date: dateStr, aircraft_type_id: atData.id,
         time_of_day, weather_conditions, flight_type: dbFlightType,
         test_flight_topic: flightType === 'На випробування' ? testTopic : null,
         document_source: docSource || null, flight_time: toHhMmSs(nalit),
@@ -334,6 +459,28 @@ export default function MainPage() {
         }
         if (fuel.airfield && fuel.amount) {
           await supabase.from('fuel_records').insert({ flight_id: flight.id, airfield: fuel.airfield, fuel_amount: parseFloat(fuel.amount) || 0 });
+        }
+
+        // Створити польоти для членів екіпажу (тих, що вибрані зі списку - мають userId)
+        const crewWithUserId = crewMembers.filter(m => m.userId);
+        for (const member of crewWithUserId) {
+          const { data: crewFlight } = await supabase.from('flights').insert({
+            user_id: member.userId,
+            date: dateStr,
+            aircraft_type_id: atData.id,
+            time_of_day,
+            weather_conditions,
+            flight_type: 'У складі екіпажу',
+            document_source: docSource || null,
+            flight_time: toHhMmSs(nalit),
+            combat_applications: 0,
+            flight_purpose: `${member.role}: ${member.name}`,
+            flights_count: 1,
+          }).select().maybeSingle();
+
+          if (crewFlight && selectedExercises.length > 0) {
+            await supabase.from('flight_exercises').insert(selectedExercises.map(ex => ({ flight_id: crewFlight.id, exercise_id: ex.id })));
+          }
         }
 
         await new Promise(r => setTimeout(r, 300));
@@ -379,13 +526,35 @@ export default function MainPage() {
             <Combo label="Час доби та МУ" value={timeDayMu} onChange={setTimeDayMu} placeholder=" " options={['ДПМУ', 'ДСМУ', 'ДВМП', 'НПМУ', 'НСМУ', 'НВМП']} />
           </div>
           <div className={s.col}>
-            <Combo label="Вид польоту" value={flightType} onChange={setFlightType} placeholder=" " options={['Учбово-тренувальний', 'На випробування', 'У складі екіпажу', 'За інструктора', 'За методиками ЛВ']} />
+            <Combo label="Вид польоту" value={flightType} onChange={setFlightType} placeholder=" " options={['Контрольний', 'Тренувальний', 'За інструктора', 'У складі екіпажу', 'На випробування', 'За методиками ЛВ']} />
           </div>
         </div>
         {flightType === 'На випробування' && (
           <div className={s.mb}>
             <div className={s.label}>Тема випробувального польоту</div>
             <input className={s.input} value={testTopic} onChange={e => setTestTopic(e.target.value)} />
+          </div>
+        )}
+
+        {/* Кнопка додавання екіпажу */}
+        {CREW_ROLES_CONFIG[typePs] && (
+          <div className={s.addCrewBtn} onClick={() => setShowCrewModal(true)}>
+            <span className={s.addCrewBtnText}>
+              {crewMembers.length > 0 ? `Екіпаж (${crewMembers.length})` : '+ Додати екіпаж'}
+            </span>
+          </div>
+        )}
+
+        {/* Відображення доданого екіпажу */}
+        {crewMembers.length > 0 && (
+          <div className={s.crewList}>
+            {crewMembers.map((member, idx) => (
+              <div key={idx} className={s.crewItem}>
+                <span className={s.crewRole}>{member.role}</span>
+                <span className={s.crewName}>{member.name}</span>
+                <button className={s.crewRemoveBtn} onClick={() => setCrewMembers(crewMembers.filter((_, i) => i !== idx))}>✕</button>
+              </div>
+            ))}
           </div>
         )}
       </Section>
@@ -449,6 +618,17 @@ export default function MainPage() {
       </div>
 
       <FlightFeedbackModal visible={showFeedback} data={feedbackData} onClose={() => { setShowFeedback(false); setFeedbackData(null); }} />
+
+      <CrewModal
+        visible={showCrewModal}
+        aircraftType={typePs}
+        roles={CREW_ROLES_CONFIG[typePs] || []}
+        showTechnician={HELICOPTER_TECHNICIAN.includes(typePs)}
+        pilots={allPilots}
+        crew={crewMembers}
+        onSave={setCrewMembers}
+        onClose={() => setShowCrewModal(false)}
+      />
     </div>
   );
 }

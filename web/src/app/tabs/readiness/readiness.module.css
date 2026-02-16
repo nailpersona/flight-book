@@ -92,21 +92,18 @@
 /* Table */
 .tableWrap {
   overflow-x: auto;
-  border-radius: 12px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.06);
   background: #FFFFFF;
-  border: 1px solid #E5E7EB;
 }
 .table {
   width: 100%;
   border-collapse: collapse;
   min-width: max-content;
+  border-bottom: 1px solid #D1D5DB;
 }
 
 /* Table header */
 .tableHeader th {
   background: #F3F4F6;
-  border-bottom: 1px solid #D1D5DB;
   border-right: 1px solid #D1D5DB;
   padding: 10px 8px;
   font-size: 11px;
@@ -114,6 +111,10 @@
   color: #6B7280;
   text-align: center;
   white-space: nowrap;
+}
+/* Top border on first header row */
+.tableHead tr:first-child th {
+  border-top: 1px solid #D1D5DB;
 }
 .tableHeader .thGroup {
   background: #6B7280 !important;
@@ -123,18 +124,38 @@
   text-align: center;
   padding: 10px 8px;
 }
+/* Left border on first column */
+.tableHeader .thNum,
+.tdNum {
+  border-left: 1px solid #D1D5DB !important;
+}
+/* Right border after aircraft column */
+.tableHeader .thAircraft,
+.tdAircraft {
+  border-right: 1px solid #D1D5DB !important;
+}
+/* Left border for group starts - column header row (gray, internal) */
+.tableHeader .colGroupStart {
+  border-left: 1px solid #D1D5DB !important;
+}
+/* Right border on last column */
+.tableHeader .thLpBreak:last-child,
+.dateCell:last-child {
+  border-right: 1px solid #D1D5DB !important;
+}
+/* Bottom border on last row */
+.tableBody tr:last-child td {
+  border-bottom: 1px solid #D1D5DB !important;
+}
+/* Bottom border under header */
+.tableHead tr:last-child th {
+  border-bottom: 1px solid #D1D5DB !important;
+}
+
 .thNum { min-width: 40px; }
 .thName { min-width: 140px; text-align: left; }
 .thClass { min-width: 50px; }
 .thAircraft { min-width: 60px; }
-.thPresent {
-  min-width: 60px;
-  padding: 10px 8px;
-  font-size: 11px;
-  font-weight: 400;
-  color: #6B7280;
-  text-align: center;
-}
 /* MU header columns */
 .thMu {
   min-width: 70px;
@@ -163,13 +184,17 @@
   text-orientation: mixed;
   transform: rotate(180deg);
 }
-/* Commission header columns */
+/* Commission header columns - vertical text */
 .thComm {
-  min-width: 60px;
-  padding: 10px 4px;
+  min-width: 40px;
+  height: 120px;
+  padding: 8px 2px;
   font-size: 10px;
   color: #B45309;
   background: #FFFBEB;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  transform: rotate(180deg);
 }
 /* Annual header columns - vertical text */
 .thAnnual {
@@ -200,6 +225,7 @@
   font-weight: 400;
   color: #9CA3AF;
   border-right: 1px solid #D1D5DB;
+  border-left: 1px solid #D1D5DB;
   text-align: center;
   vertical-align: middle;
 }
@@ -234,20 +260,9 @@
 .tdAircraft {
   min-width: 60px;
   padding: 8px;
-  border-right: 1px solid #D1D5DB;
   font-size: 12px;
   font-weight: 400;
   color: #111827;
-  height: 36px;
-}
-.tdPresent {
-  min-width: 60px;
-  padding: 8px;
-  border-right: 1px solid #D1D5DB;
-  font-size: 14px;
-  font-weight: 400;
-  color: #2E7D32;
-  text-align: center;
   height: 36px;
 }
 /* Date cell as td */
@@ -259,10 +274,159 @@
   font-weight: 400;
   text-align: center;
   border-right: 1px solid #D1D5DB;
+  border-bottom: 1px solid #D1D5DB;
   vertical-align: middle;
 }
 .dateCell:last-child {
-  border-right: none;
+  border-right: 1px solid #D1D5DB;
+}
+/* Left border for group starts in data rows (gray, internal) */
+.dateCell.groupStartMu,
+.dateCell.groupStartComm,
+.dateCell.groupStartAnnual,
+.dateCell.groupStartLpBreak {
+  border-left: 1px solid #D1D5DB !important;
+}
+.dateCellEditable {
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.dateCellEditable:hover {
+  filter: brightness(0.95);
+  box-shadow: inset 0 0 0 2px rgba(59, 130, 246, 0.5);
+}
+
+/* Modal */
+.modalOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.modal {
+  background: #FFFFFF;
+  border-radius: 12px;
+  width: 320px;
+  max-width: 90vw;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+}
+.modalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  border-bottom: 1px solid #E5E7EB;
+}
+.modalTitle {
+  font-size: 16px;
+  font-weight: 400;
+  color: #111827;
+}
+.modalClose {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #6B7280;
+  border-radius: 6px;
+}
+.modalClose:hover {
+  background: #F3F4F6;
+}
+.modalBody {
+  padding: 16px;
+}
+.modalLabel {
+  font-size: 13px;
+  font-weight: 400;
+  color: #6B7280;
+  margin-bottom: 8px;
+}
+.modalInput {
+  width: 100%;
+  height: 40px;
+  border: 1px solid #D1D5DB;
+  border-radius: 8px;
+  padding: 0 12px;
+  font-size: 14px;
+  font-weight: 400;
+  font-family: inherit;
+  outline: none;
+  box-sizing: border-box;
+}
+.modalInput:focus {
+  border-color: #3B82F6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+.modalFooter {
+  display: flex;
+  gap: 8px;
+  padding: 16px;
+  border-top: 1px solid #E5E7EB;
+}
+.modalCancelBtn {
+  flex: 1;
+  height: 40px;
+  border: 1px solid #D1D5DB;
+  border-radius: 8px;
+  background: #FFFFFF;
+  font-size: 14px;
+  font-weight: 400;
+  color: #374151;
+  cursor: pointer;
+  font-family: inherit;
+}
+.modalCancelBtn:hover {
+  background: #F9FAFB;
+}
+.modalSaveBtn {
+  flex: 1;
+  height: 40px;
+  border: none;
+  border-radius: 8px;
+  background: #3B82F6;
+  font-size: 14px;
+  font-weight: 400;
+  color: #FFFFFF;
+  cursor: pointer;
+  font-family: inherit;
+}
+.modalSaveBtn:hover {
+  background: #2563EB;
+}
+.modalSaveBtn:disabled {
+  background: #9CA3AF;
+  cursor: not-allowed;
+}
+.modalDeleteBtn {
+  flex: 1;
+  height: 40px;
+  border: none;
+  border-radius: 8px;
+  background: #FEE2E2;
+  font-size: 14px;
+  font-weight: 400;
+  color: #DC2626;
+  cursor: pointer;
+  font-family: inherit;
+}
+.modalDeleteBtn:hover {
+  background: #FECACA;
+}
+.modalDeleteBtn:disabled {
+  background: #F3F4F6;
+  color: #9CA3AF;
+  cursor: not-allowed;
 }
 
 /* Loading */
@@ -286,19 +450,186 @@
 
 /* ── Print ── */
 @media print {
-  .backBtn, .actions { display: none !important; }
-  .container { padding: 4px; }
-  .tableWrap { overflow: visible; box-shadow: none; }
+  /* Сторінка А4 КНИЖКОВА - таблиця повернута на 90° */
+  @page {
+    size: A4 portrait;
+    margin: 5mm;
+  }
+
+  /* Приховати верхні елементи */
+  .header,
+  .summaryRow {
+    display: none !important;
+  }
+
+  .container {
+    padding: 0;
+    margin: 0;
+    max-width: none;
+    width: 100%;
+  }
+
+  .tableWrap {
+    overflow: visible;
+  }
+
+  /* Таблиця повернута на 90° */
+  .table {
+    transform: rotate(90deg);
+    transform-origin: top left;
+    position: relative;
+    left: 100%;
+    width: max-content;
+    table-layout: auto;
+    font-size: 7px;
+    border-collapse: collapse;
+  }
+
+  /* Контейнер розтягується під повернуту таблицю */
+  .tableWrap {
+    width: 210mm;
+    height: 297mm;
+    min-height: 100vh;
+  }
+
+  .tableHeader th {
+    padding: 2px 3px;
+    font-size: 6px;
+    white-space: nowrap;
+  }
+
+  .tableHeader .thGroup {
+    font-size: 8px !important;
+    padding: 3px 4px;
+  }
+
+  /* Вертикальні заголовки */
+  .thLpBreak,
+  .thAnnual,
+  .thComm {
+    height: 60px;
+    min-width: 20px;
+    padding: 2px 0;
+    font-size: 5px;
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    transform: rotate(180deg);
+    line-height: 1;
+  }
+
+  .thMu {
+    min-width: 35px;
+    padding: 2px;
+    font-size: 5px;
+  }
+
+  .thNum { min-width: 20px; }
+  .thName { min-width: 70px; text-align: left; }
+  .thClass { min-width: 22px; }
+  .thAircraft { min-width: 30px; }
+
+  .tdNum,
+  .tdClass,
+  .tdAircraft {
+    padding: 2px;
+    font-size: 6px;
+    min-width: unset;
+  }
+
+  .tdName {
+    padding: 2px 3px;
+    min-width: 70px;
+  }
+
+  .pilotName {
+    font-size: 6px;
+    white-space: nowrap;
+  }
+
+  .pilotInfo {
+    display: none;
+  }
+
   .dateCell {
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
+    width: 20px;
+    min-width: 20px;
+    height: 20px;
+    padding: 1px;
+    font-size: 5px;
+    white-space: nowrap;
+    line-height: 1.2;
   }
-  .summaryCard {
+
+  /* Кольори при друці */
+  .dateCell,
+  .summaryCard,
+  .thMu, .thLp, .thLpBreak, .thComm, .thAnnual,
+  .tableHeader .thGroup {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
+    color-adjust: exact;
   }
-  .thMu, .thLp, .thLpBreak, .thComm, .thAnnual {
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
+
+  /* Всі межі таблиці - однакові скрізь */
+  .table {
+    border: 0.5pt solid #D1D5DB !important;
+  }
+  .table th,
+  .table td,
+  .tableHeader th,
+  .tableBody th,
+  .tableBody td,
+  .tableBody tr td,
+  .tableBody tr:last-child td,
+  .tableHead th,
+  .tableHead tr:first-child th,
+  .tableHead tr:last-child th,
+  .tdNum,
+  .tdName,
+  .tdClass,
+  .tdAircraft,
+  .dateCell,
+  .thNum,
+  .thName,
+  .thClass,
+  .thAircraft,
+  .thMu,
+  .thLp,
+  .thLpBreak,
+  .thComm,
+  .thAnnual,
+  .thGroup,
+  .colGroupStart,
+  .groupStartMu,
+  .groupStartComm,
+  .groupStartAnnual,
+  .groupStartLpBreak {
+    border-color: #D1D5DB !important;
+    border-width: 0.5pt !important;
+    border-style: solid !important;
+  }
+  /* Окремі сторони меж */
+  .table th,
+  .table td {
+    border-top: 0.5pt solid #D1D5DB !important;
+    border-right: 0.5pt solid #D1D5DB !important;
+    border-bottom: 0.5pt solid #D1D5DB !important;
+    border-left: 0.5pt solid #D1D5DB !important;
+  }
+
+  /* Приховати hover ефекти */
+  .dateCellEditable:hover {
+    box-shadow: none !important;
+    filter: none !important;
+  }
+
+  .pilotRow:hover,
+  .aircraftRow:hover {
+    background: transparent !important;
+  }
+
+  /* Приховати модальне вікно */
+  .modalOverlay {
+    display: none !important;
   }
 }

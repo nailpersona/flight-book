@@ -29,7 +29,7 @@ function getDateRange(k) {
   }
 }
 
-function toISO(d) { return d.toISOString().split('T')[0]; }
+function toISO(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
 
 function fmtDate(d) {
   if (!d) return '';
