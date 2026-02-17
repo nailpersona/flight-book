@@ -115,13 +115,14 @@ export default function AdminPositionsPage() {
       return;
     }
 
-    const { error } = await supabase
-      .from('positions')
-      .update({ parent_id: newParentId })
-      .eq('id', positionId);
-
-    if (error) {
-      window.alert(error.message);
+    const res = await fetch('/api/positions', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: positionId, parent_id: newParentId }),
+    });
+    const result = await res.json();
+    if (result.error) {
+      window.alert(result.error);
     } else {
       setSelectingParentFor(null);
       loadData();
@@ -148,12 +149,17 @@ export default function AdminPositionsPage() {
       return;
     }
 
-    const { error } = await supabase.from('positions').insert({
-      name: newPosName.trim(),
-      parent_id: null,
+    const res = await fetch('/api/positions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: newPosName.trim(),
+        parent_id: null,
+      }),
     });
-    if (error) {
-      window.alert(error.message);
+    const result = await res.json();
+    if (result.error) {
+      window.alert(result.error);
     } else {
       setShowAddModal(false);
       setNewPosName('');
@@ -177,9 +183,14 @@ export default function AdminPositionsPage() {
       return;
     }
 
-    const { error } = await supabase.from('positions').update({ name: editPosName.trim() }).eq('id', editPos.id);
-    if (error) {
-      window.alert(error.message);
+    const res = await fetch('/api/positions', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: editPos.id, name: editPosName.trim() }),
+    });
+    const result = await res.json();
+    if (result.error) {
+      window.alert(result.error);
     } else {
       setShowEditModal(false);
       setEditPos(null);
@@ -197,8 +208,13 @@ export default function AdminPositionsPage() {
       for (const pilot of pilotsInPos) {
         await supabase.from('users').update({ position_id: pos.parent_id }).eq('id', pilot.id);
       }
-      const { error } = await supabase.from('positions').delete().eq('id', pos.id);
-      if (error) throw error;
+      const res = await fetch('/api/positions', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: pos.id }),
+      });
+      const result = await res.json();
+      if (result.error) throw new Error(result.error);
       loadData();
     } catch (error) {
       window.alert(error.message);
@@ -208,12 +224,14 @@ export default function AdminPositionsPage() {
   // Перемкнути право редагування Зведеної таблиці
   const toggleEditReadiness = async (pos) => {
     const newValue = !pos.can_edit_readiness;
-    const { error } = await supabase
-      .from('positions')
-      .update({ can_edit_readiness: newValue })
-      .eq('id', pos.id);
-    if (error) {
-      window.alert(error.message);
+    const res = await fetch('/api/positions', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: pos.id, can_edit_readiness: newValue }),
+    });
+    const result = await res.json();
+    if (result.error) {
+      window.alert(result.error);
     } else {
       loadData();
     }
