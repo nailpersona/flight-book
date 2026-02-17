@@ -41,7 +41,15 @@ export default function Settings({ navigation }) {
   const [updatingPassword, setUpdatingPassword] = useState(false);
 
   // User info from DB
-  const [userInfo, setUserInfo] = useState({ rank: '', position: '' });
+  const [userInfo, setUserInfo] = useState({ rank: '', position: '', crew_role: '', military_class: '' });
+
+  // Crew role selection
+  const CREW_ROLES = ['Пілот', 'Штурман', 'Бортовий технік'];
+  const [showCrewRoleModal, setShowCrewRoleModal] = useState(false);
+
+  // Military class selection
+  const MILITARY_CLASSES = ['1', '2'];
+  const [showMilitaryClassModal, setShowMilitaryClassModal] = useState(false);
 
   // Entry settings state
   const [selectedAircraftTypes, setSelectedAircraftTypes] = useState([]);
@@ -87,12 +95,17 @@ export default function Settings({ navigation }) {
       // Load rank & position from users table
       const { data: userData } = await supabase
         .from('users')
-        .select('rank, position')
+        .select('rank, position, crew_role, military_class')
         .eq('email', auth?.email)
         .maybeSingle();
 
       if (userData) {
-        setUserInfo({ rank: userData.rank || '', position: userData.position || '' });
+        setUserInfo({
+          rank: userData.rank || '',
+          position: userData.position || '',
+          crew_role: userData.crew_role || '',
+          military_class: userData.military_class ? String(userData.military_class) : '',
+        });
       }
 
       const { data, error } = await supabase
@@ -204,6 +217,18 @@ export default function Settings({ navigation }) {
     );
   };
 
+  // Select crew role
+  const selectCrewRole = (role) => {
+    setUserInfo(prev => ({ ...prev, crew_role: role }));
+    setShowCrewRoleModal(false);
+  };
+
+  // Select military class
+  const selectMilitaryClass = (cls) => {
+    setUserInfo(prev => ({ ...prev, military_class: cls }));
+    setShowMilitaryClassModal(false);
+  };
+
   const handlePasswordChange = async () => {
     if (!newPassword.trim()) {
       ThemedAlert.alert('Помилка', 'Введіть новий пароль');
@@ -250,6 +275,17 @@ export default function Settings({ navigation }) {
         .map(({ type, hours }) => ({ type, hours }));
 
       const total = Number(totalHours) || 0;
+
+      // Update crew_role and military_class in users table
+      if (userInfo.crew_role || userInfo.military_class) {
+        await supabase
+          .from('users')
+          .update({
+            crew_role: userInfo.crew_role || null,
+            military_class: userInfo.military_class ? parseInt(userInfo.military_class, 10) : null,
+          })
+          .eq('email', auth?.email);
+      }
 
       // Update or insert pilot data
       const { error } = await supabase
@@ -305,6 +341,26 @@ export default function Settings({ navigation }) {
             <Text style={styles.fieldLabel}>Посада:</Text>
             <Text style={styles.fieldValue}>{userInfo.position || '-'}</Text>
           </View>
+
+          <TouchableOpacity
+            style={styles.fieldRowClickable}
+            onPress={() => setShowCrewRoleModal(true)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.fieldLabel}>Роль:</Text>
+            <Text style={styles.fieldValue}>{userInfo.crew_role || 'Не вказано'}</Text>
+            <Text style={styles.fieldArrow}>›</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.fieldRowClickable}
+            onPress={() => setShowMilitaryClassModal(true)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.fieldLabel}>Клас:</Text>
+            <Text style={styles.fieldValue}>{userInfo.military_class || 'Не вказано'}</Text>
+            <Text style={styles.fieldArrow}>›</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Наліт за типами ПС */}
@@ -626,6 +682,96 @@ export default function Settings({ navigation }) {
           </View>
         </View>
       </Modal>
+
+      {/* Modal для вибору ролі в екіпажі */}
+      <Modal
+        visible={showCrewRoleModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowCrewRoleModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Роль в екіпажі</Text>
+
+            <View style={styles.categorySection}>
+              {CREW_ROLES.map((role) => {
+                const isSelected = userInfo.crew_role === role;
+                return (
+                  <TouchableOpacity
+                    key={role}
+                    style={[
+                      styles.multiSelectOption,
+                      isSelected && styles.multiSelectOptionSelected,
+                    ]}
+                    onPress={() => selectCrewRole(role)}
+                  >
+                    <Text style={[
+                      styles.multiSelectOptionText,
+                      isSelected && styles.multiSelectOptionTextSelected,
+                    ]}>
+                      {role}
+                    </Text>
+                    {isSelected && <Text style={styles.checkmark}>✓</Text>}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <TouchableOpacity
+              style={styles.cancelBtn}
+              onPress={() => setShowCrewRoleModal(false)}
+            >
+              <Text style={styles.cancelBtnText}>Скасувати</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal для вибору класу */}
+      <Modal
+        visible={showMilitaryClassModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowMilitaryClassModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Клас</Text>
+
+            <View style={styles.categorySection}>
+              {MILITARY_CLASSES.map((cls) => {
+                const isSelected = userInfo.military_class === cls;
+                return (
+                  <TouchableOpacity
+                    key={cls}
+                    style={[
+                      styles.multiSelectOption,
+                      isSelected && styles.multiSelectOptionSelected,
+                    ]}
+                    onPress={() => selectMilitaryClass(cls)}
+                  >
+                    <Text style={[
+                      styles.multiSelectOptionText,
+                      isSelected && styles.multiSelectOptionTextSelected,
+                    ]}>
+                      {cls}
+                    </Text>
+                    {isSelected && <Text style={styles.checkmark}>✓</Text>}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <TouchableOpacity
+              style={styles.cancelBtn}
+              onPress={() => setShowMilitaryClassModal(false)}
+            >
+              <Text style={styles.cancelBtnText}>Скасувати</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -660,6 +806,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     marginBottom: 12,
   },
+  fieldRowClickable: {
+    flexDirection: 'row',
+    marginBottom: 12,
+    alignItems: 'center',
+  },
   fieldLabel: {
     fontFamily: FONT,
     fontSize: 16,
@@ -672,6 +823,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#111827',
     flex: 1,
+  },
+  fieldArrow: {
+    fontFamily: FONT,
+    fontSize: 20,
+    color: '#9CA3AF',
+    marginLeft: 4,
   },
   sectionTitle: {
     fontFamily: FONT,

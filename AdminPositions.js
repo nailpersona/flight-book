@@ -11,8 +11,13 @@ import { supabase } from './supabase';
 import ThemedAlert from './ThemedAlert';
 
 // Компонент посади з підтримкою drag-and-drop
-const PositionItem = ({ position, level, expanded, onToggle, onEdit, onDelete, onShowCodes, onAddPilot, pilotsCount, isDragging, isDropTarget, onLongPress }) => {
-  console.log('PositionItem render:', position.name, 'pilots:', position.pilots?.length || 0, 'expanded:', expanded);
+// 1 блок = 1 посада, прізвища людей йдуть зверху вниз
+const PositionItem = ({ position, level, expanded, onToggle, onEdit, onDelete, onShowCodes, onAddToPosition, onRemoveFromPosition, isDragging, isDropTarget, onLongPress, onToggleEdit }) => {
+  console.log('PositionItem render:', position.name, 'people:', position.pilots?.length || 0, 'expanded:', expanded);
+
+  const people = position.pilots || [];
+  const hasPeople = people.length > 0;
+
   return (
     <View
       style={[
@@ -21,6 +26,7 @@ const PositionItem = ({ position, level, expanded, onToggle, onEdit, onDelete, o
         isDropTarget && styles.positionDropTarget,
       ]}
     >
+      {/* Основний блок посади */}
       <TouchableOpacity
         style={[styles.positionHeader, { marginLeft: level * 20 }]}
         onPress={onToggle}
@@ -28,17 +34,42 @@ const PositionItem = ({ position, level, expanded, onToggle, onEdit, onDelete, o
         delayLongPress={500}
         activeOpacity={0.7}
       >
-        <Ionicons
-          name={expanded ? 'chevron-down' : 'chevron-forward'}
-          size={16}
-          color={Colors.textTertiary}
-        />
-        <Text style={styles.positionName}>{position.name}</Text>
-        {pilotsCount > 0 && <Text style={styles.positionCount}>({pilotsCount})</Text>}
+        {position.children?.length > 0 && (
+          <Ionicons
+            name={expanded ? 'chevron-down' : 'chevron-forward'}
+            size={16}
+            color={Colors.textTertiary}
+          />
+        )}
+
+        {/* Прізвища людей зверху, потім посада знизу */}
+        <View style={styles.positionContent}>
+          {hasPeople ? (
+            <>
+              {people.map((person) => (
+                <Text key={person.id} style={styles.personName}>{person.name}</Text>
+              ))}
+              <Text style={styles.positionNameSmall}>{position.name}</Text>
+            </>
+          ) : (
+            // Немає людей: тільки посада
+            <Text style={styles.positionName}>{position.name}</Text>
+          )}
+        </View>
       </TouchableOpacity>
+
       <View style={styles.positionActions}>
-        <TouchableOpacity onPress={() => onAddPilot(position.id)} style={styles.actionBtn}>
+        {/* Перемикач права редагування Зведеної таблиці */}
+        <TouchableOpacity onPress={onToggleEdit} style={[styles.actionBtn, position.can_edit_readiness && styles.actionBtnActive]}>
+          <Ionicons name={position.can_edit_readiness ? "checkbox" : "square-outline"} size={20} color={position.can_edit_readiness ? Colors.primary : Colors.textTertiary} />
+        </TouchableOpacity>
+        {/* Кнопка додати до посади */}
+        <TouchableOpacity onPress={() => onAddToPosition(position.id)} style={styles.actionBtn}>
           <Ionicons name="person-add" size={20} color={Colors.textTertiary} />
+        </TouchableOpacity>
+        {/* Кнопка зняти з посади */}
+        <TouchableOpacity onPress={() => onRemoveFromPosition(position.id, people)} style={styles.actionBtn}>
+          <Ionicons name="person-remove" size={20} color={Colors.textTertiary} />
         </TouchableOpacity>
         <TouchableOpacity onPress={() => onShowCodes(position.id)} style={styles.actionBtn}>
           <Ionicons name="key" size={20} color={Colors.textTertiary} />
@@ -51,7 +82,8 @@ const PositionItem = ({ position, level, expanded, onToggle, onEdit, onDelete, o
         </TouchableOpacity>
       </View>
 
-      {expanded && (
+      {/* Дочірні посади */}
+      {expanded && position.children?.length > 0 && (
         <View style={styles.positionChildren}>
           {position.children?.map(child => (
             <PositionItem
@@ -63,18 +95,13 @@ const PositionItem = ({ position, level, expanded, onToggle, onEdit, onDelete, o
               onEdit={() => child.onEdit()}
               onDelete={() => child.onDelete()}
               onShowCodes={() => child.onShowCodes()}
-              onAddPilot={() => child.onAddPilot()}
-              pilotsCount={child.pilotsCount}
+              onAddToPosition={() => child.onAddToPosition()}
+              onRemoveFromPosition={(posId, peopleOnPos) => child.onRemoveFromPosition(posId, peopleOnPos)}
               onLongPress={() => child.onLongPress()}
+              onToggleEdit={() => child.onToggleEdit()}
               isDragging={child.isDragging}
               isDropTarget={child.isDropTarget}
             />
-          ))}
-          {position.pilots?.map(pilot => (
-            <View key={pilot.id} style={styles.pilotItem}>
-              <Ionicons name="person" size={14} color={Colors.textTertiary} />
-              <Text style={styles.pilotName}>{pilot.name}</Text>
-            </View>
           ))}
         </View>
       )}
@@ -100,15 +127,19 @@ export default function AdminPositions({ navigation }) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showCodesModal, setShowCodesModal] = useState(false);
-  const [showAddPilotModal, setShowAddPilotModal] = useState(false);
+  const [showAddToPositionModal, setShowAddToPositionModal] = useState(false);
+  const [showRemoveFromPositionModal, setShowRemoveFromPositionModal] = useState(false);
 
   // Form
   const [newPosName, setNewPosName] = useState('');
   const [editPos, setEditPos] = useState(null);
   const [editPosName, setEditPosName] = useState('');
   const [codesPositionId, setCodesPositionId] = useState([]);
-  const [addPilotPositionId, setAddPilotPositionId] = useState(null);
-  const [selectedPilotId, setSelectedPilotId] = useState(null);
+  const [addToPositionId, setAddToPositionId] = useState(null);
+  const [selectedPersonId, setSelectedPersonId] = useState(null);
+  const [removeFromPositionId, setRemoveFromPositionId] = useState(null);
+  const [peopleOnPosition, setPeopleOnPosition] = useState([]);
+  const [selectedRemovePersonId, setSelectedRemovePersonId] = useState(null);
 
   if (auth?.role !== 'admin') {
     return (
@@ -125,7 +156,7 @@ export default function AdminPositions({ navigation }) {
     try {
       const [posRes, pilotsRes] = await Promise.all([
         supabase.from('positions').select('*').order('order_num, name'),
-        supabase.from('users').select('id, name, position').order('name'),
+        supabase.from('users').select('id, name, position, position_id').order('name'),
       ]);
       console.log('=== loadData raw ===');
       console.log('pilotsRes data:', pilotsRes.data);
@@ -144,6 +175,13 @@ export default function AdminPositions({ navigation }) {
   };
 
   useEffect(() => { loadData(); }, []);
+
+  // Розгорнути всі посади при завантаженні
+  useEffect(() => {
+    if (positions.length > 0 && expandedIds.size === 0) {
+      setExpandedIds(new Set(positions.map(p => p.name)));
+    }
+  }, [positions]);
 
   // Перевірка чи може позиція бути батьком
   const canBeParent = (parentId, childId) => {
@@ -173,7 +211,7 @@ export default function AdminPositions({ navigation }) {
       .filter(p => p.parent_id === parentId)
       .sort((a, b) => (a.order_num || 0) - (b.order_num || 0))
       .map(pos => {
-        const posPilots = pilots.filter(p => p.position === pos.name);
+        const posPilots = pilots.filter(p => p.position_id === pos.id);
         console.log(`buildTree: ${pos.name} (${pos.id}) -> pilots: ${posPilots.length}`);
         console.log(`  Filtering by position name: "${pos.name}"`);
         console.log(`  Pilots with this position:`, posPilots.map(p => p.name));
@@ -185,19 +223,20 @@ export default function AdminPositions({ navigation }) {
           onEdit: () => {
             setEditPos(pos);
             setEditPosName(pos.name);
-            setShowEditUnit(true);
+            setShowEditModal(true);
           },
           onDelete: () => deletePosition(pos),
           onShowCodes: () => showCodes(pos.id),
-          onAddPilot: () => {
-            setAddPilotPositionId(pos.name);
-            setSelectedPilotId(null);
-            setShowAddPilotModal(true);
+          onAddToPosition: () => {
+            setAddToPositionId(pos.name);
+            setSelectedPersonId(null);
+            setShowAddToPositionModal(true);
           },
+          onRemoveFromPosition: (posId, peopleOnPos) => startRemoveFromPosition(posId, peopleOnPos),
           onLongPress: () => startSelectParent(pos),
+          onToggleEdit: () => toggleEditReadiness(pos),
           isDragging: draggingPosition === pos.id,
           isDropTarget: dropTargetId === pos.id && selectingParentFor !== pos.id,
-          pilotsCount: posPilots.length,
           children: buildTree(pos.id, level + 1),
           pilots: posPilots,
         };
@@ -253,6 +292,13 @@ export default function AdminPositions({ navigation }) {
   // Додати посаду
   const addPosition = async () => {
     if (!newPosName.trim()) return ThemedAlert.alert('Помилка', 'Введіть назву');
+
+    // Перевірка чи немає вже посади з такою назвою
+    const existingPosition = positions.find(p => p.name.toLowerCase() === newPosName.trim().toLowerCase());
+    if (existingPosition) {
+      return ThemedAlert.alert('Посада існує', `Посада з назвою "${newPosName.trim()}" вже існує. Назви посад мають бути унікальними.`);
+    }
+
     try {
       const { error } = await supabase.from('positions').insert({
         name: newPosName.trim(),
@@ -270,6 +316,16 @@ export default function AdminPositions({ navigation }) {
   // Редагувати посаду
   const savePosition = async () => {
     if (!editPosName.trim()) return ThemedAlert.alert('Помилка', 'Введіть назву');
+
+    // Перевірка чи немає вже посади з такою назвою (крім поточної)
+    const existingPosition = positions.find(p =>
+      p.id !== editPos.id &&
+      p.name.toLowerCase() === editPosName.trim().toLowerCase()
+    );
+    if (existingPosition) {
+      return ThemedAlert.alert('Посада існує', `Посада з назвою "${editPosName.trim()}" вже існує. Назви посад мають бути унікальними.`);
+    }
+
     try {
       const { error } = await supabase.from('positions').update({ name: editPosName.trim() }).eq('id', editPos.id);
       if (error) throw error;
@@ -291,9 +347,9 @@ export default function AdminPositions({ navigation }) {
         style: 'destructive',
         onPress: async () => {
           try {
-            const pilotsInPos = pilots.filter(p => p.position === pos.id);
+            const pilotsInPos = pilots.filter(p => p.position_id === pos.id);
             for (const pilot of pilotsInPos) {
-              await supabase.from('users').update({ position: pos.parent_id }).eq('id', pilot.id);
+              await supabase.from('users').update({ position_id: pos.parent_id }).eq('id', pilot.id);
             }
             const { error } = await supabase.from('positions').delete().eq('id', pos.id);
             if (error) throw error;
@@ -306,11 +362,26 @@ export default function AdminPositions({ navigation }) {
     ]);
   };
 
+  // Перемкнути право редагування Зведеної таблиці
+  const toggleEditReadiness = async (pos) => {
+    try {
+      const newValue = !pos.can_edit_readiness;
+      const { error } = await supabase
+        .from('positions')
+        .update({ can_edit_readiness: newValue })
+        .eq('id', pos.id);
+      if (error) throw error;
+      loadData();
+    } catch (error) {
+      ThemedAlert.alert('Помилка', error.message);
+    }
+  };
+
   // Створити код
   const createCode = async (positionId) => {
     try {
       const { data, error } = await supabase.rpc('fn_create_position_invite', {
-        p_position: positionId,
+        p_position_id: positionId,
         p_created_by: auth?.userId,
       });
       if (error) throw error;
@@ -333,7 +404,7 @@ export default function AdminPositions({ navigation }) {
 
   // Завантажити коди
   const loadCodes = async (positionId) => {
-    const { data, error } = await supabase.rpc('fn_get_position_codes', { p_position: positionId });
+    const { data, error } = await supabase.rpc('fn_get_position_codes', { p_position_id: positionId });
     if (!error && data) setCodesPositionId(data);
   };
 
@@ -344,38 +415,54 @@ export default function AdminPositions({ navigation }) {
     setShowCodesModal(true);
   };
 
-  // Додати пілота до посади
-  const addPilotToPosition = async () => {
-    console.log('=== Додавання пілота ===');
-    console.log('selectedPilotId:', selectedPilotId);
-    console.log('addPilotPositionId:', addPilotPositionId);
-
-    if (!selectedPilotId) return ThemedAlert.alert('Помилка', 'Оберіть пілота');
-    if (!addPilotPositionId) return ThemedAlert.alert('Помилка', 'Посада не обрана');
-
-    const existingPilot = pilots.find(p => p.position === addPilotPositionId);
-    if (existingPilot) {
-      return ThemedAlert.alert('Посада зайнята', `Цю посаду вже займає: ${existingPilot.name}\n\nСпочатку видаліть поточного пілота з цієї посади.`);
-    }
+  // Додати людину до посади
+  const addToPosition = async () => {
+    if (!selectedPersonId) return ThemedAlert.alert('Помилка', 'Оберіть особу');
+    if (!addToPositionId) return ThemedAlert.alert('Помилка', 'Посада не обрана');
 
     try {
-      console.log('Оновлення пілота...', selectedPilotId, '-> position:', addPilotPositionId);
-      const { data, error } = await supabase.from('users').update({ position: addPilotPositionId }).eq('id', selectedPilotId).select();
+      const { error } = await supabase.from('users').update({ position_id: addToPositionId }).eq('id', selectedPersonId);
       if (error) throw error;
-      console.log('Успішно оновлено! Updated user:', data);
-      // Розгортаємо посаду після додавання пілота
+      setShowAddToPositionModal(false);
+      setSelectedPersonId(null);
+      setAddToPositionId(null);
+      // Розгортаємо посаду після додавання
       const newExpanded = new Set(expandedIds);
-      newExpanded.add(addPilotPositionId);
+      newExpanded.add(addToPositionId);
       setExpandedIds(newExpanded);
-      setShowAddPilotModal(false);
-      setSelectedPilotId(null);
-      setAddPilotPositionId(null);
-      // Затримка для оновлення індексів
       await new Promise(resolve => setTimeout(resolve, 500));
       await loadData();
-      console.log('Дані перезавантажено');
     } catch (error) {
-      console.log('Помилка:', error);
+      ThemedAlert.alert('Помилка', error.message);
+    }
+  };
+
+  // Почати зняття з посади
+  const startRemoveFromPosition = (positionId, peopleOnPos) => {
+    setRemoveFromPositionId(positionId);
+    setPeopleOnPosition(peopleOnPos);
+    setSelectedRemovePersonId(null);
+
+    if (peopleOnPos.length === 1) {
+      // Тільки 1 людина — зняти без модалки
+      removeFromPosition(positionId, peopleOnPos[0].id);
+    } else {
+      // Більше 1 людини — модалка з вибором
+      setShowRemoveFromPositionModal(true);
+    }
+  };
+
+  // Зняти людину з посади
+  const removeFromPosition = async (positionId, personId) => {
+    try {
+      const { error } = await supabase.from('users').update({ position_id: null }).eq('id', personId);
+      if (error) throw error;
+      setShowRemoveFromPositionModal(false);
+      setRemoveFromPositionId(null);
+      setSelectedRemovePersonId(null);
+      setPeopleOnPosition([]);
+      await loadData();
+    } catch (error) {
       ThemedAlert.alert('Помилка', error.message);
     }
   };
@@ -391,9 +478,10 @@ export default function AdminPositions({ navigation }) {
         onEdit={pos.onEdit}
         onDelete={pos.onDelete}
         onShowCodes={pos.onShowCodes}
-        onAddPilot={pos.onAddPilot}
-        pilotsCount={pos.pilotsCount}
+        onAddToPosition={pos.onAddToPosition}
+        onRemoveFromPosition={pos.onRemoveFromPosition}
         onLongPress={pos.onLongPress}
+        onToggleEdit={pos.onToggleEdit}
         isDragging={pos.isDragging}
         isDropTarget={pos.isDropTarget}
       />
@@ -481,7 +569,7 @@ export default function AdminPositions({ navigation }) {
 
       <View style={styles.hintBar}>
         <Ionicons name="information-circle" size={14} color={Colors.textSecondary} />
-        <Text style={styles.hintText}>Тримайте довго щоб перемістити посаду в іншу</Text>
+        <Text style={styles.hintText}>✓ = редагування Зведеної таблиці | Тримайте довго — перемістити посаду</Text>
       </View>
 
       {loading ? (
@@ -573,32 +661,65 @@ export default function AdminPositions({ navigation }) {
         </TouchableOpacity>
       </Modal>
 
-      {/* Modal додавання пілота */}
-      <Modal visible={showAddPilotModal} transparent animationType="fade">
+      {/* Modal додавання до посади */}
+      <Modal visible={showAddToPositionModal} transparent animationType="fade">
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Додати пілота</Text>
-            <ScrollView style={styles.pilotsList}>
-              {pilots.map(pilot => (
+            <Text style={styles.modalTitle}>Додати до посади</Text>
+            <ScrollView style={styles.peopleList}>
+              {pilots.map(person => (
                 <TouchableOpacity
-                  key={pilot.id}
-                  style={[styles.pilotSelectItem, selectedPilotId === pilot.id && styles.pilotSelectItemActive]}
-                  onPress={() => setSelectedPilotId(pilot.id)}
+                  key={person.id}
+                  style={[styles.personSelectItem, selectedPersonId === person.id && styles.personSelectItemActive]}
+                  onPress={() => setSelectedPersonId(person.id)}
                 >
-                  <Text style={[styles.pilotSelectText, selectedPilotId === pilot.id && styles.pilotSelectTextActive]}>{pilot.name}</Text>
+                  <Text style={[styles.personSelectText, selectedPersonId === person.id && styles.personSelectTextActive]}>{person.name}</Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
             <View style={styles.modalButtons}>
               <TouchableOpacity style={[styles.modalBtn, styles.modalBtnSecondary]} onPress={() => {
-                setShowAddPilotModal(false);
-                setSelectedPilotId(null);
-                setAddPilotPositionId(null);
+                setShowAddToPositionModal(false);
+                setSelectedPersonId(null);
+                setAddToPositionId(null);
               }}>
                 <Text style={styles.modalBtnText}>Скасувати</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.modalBtn, styles.modalBtnPrimary]} onPress={addPilotToPosition}>
+              <TouchableOpacity style={[styles.modalBtn, styles.modalBtnPrimary]} onPress={addToPosition}>
                 <Text style={styles.modalBtnTextPrimary}>Додати</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal зняття з посади */}
+      <Modal visible={showRemoveFromPositionModal} transparent animationType="fade">
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Зняти з посади</Text>
+            <ScrollView style={styles.peopleList}>
+              {peopleOnPosition.map(person => (
+                <TouchableOpacity
+                  key={person.id}
+                  style={[styles.personSelectItem, selectedRemovePersonId === person.id && styles.personSelectItemActive]}
+                  onPress={() => setSelectedRemovePersonId(person.id)}
+                >
+                  <Text style={[styles.personSelectText, selectedRemovePersonId === person.id && styles.personSelectTextActive]}>{person.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <View style={styles.modalButtons}>
+              <TouchableOpacity style={[styles.modalBtn, styles.modalBtnSecondary]} onPress={() => {
+                setShowRemoveFromPositionModal(false);
+                setSelectedRemovePersonId(null);
+                setRemoveFromPositionId(null);
+                setPeopleOnPosition([]);
+              }}>
+                <Text style={styles.modalBtnText}>Скасувати</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.modalBtn, styles.modalBtnPrimary]} onPress={() => removeFromPosition(removeFromPositionId, selectedRemovePersonId)}>
+                <Text style={styles.modalBtnTextPrimary}>Зняти</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -623,15 +744,22 @@ const styles = StyleSheet.create({
   positionBlock: { marginBottom: 0 },
   positionHeader: { flex: 1, flexDirection: 'row', alignItems: 'center', padding: Spacing.sm, backgroundColor: Colors.bgSecondary, borderRadius: BorderRadius.md },
   positionName: { flex: 1, fontSize: 14, fontFamily: FONT, color: Colors.textPrimary, marginLeft: 8 },
+  positionNameSmall: { fontSize: 13, fontFamily: FONT, color: Colors.textSecondary },
+  positionContent: { flex: 1, marginLeft: 8, gap: 4 },
   positionCount: { fontSize: 12, color: Colors.textTertiary },
   positionDragging: { opacity: 0.6 },
   positionDropTarget: { borderWidth: 2, borderColor: Colors.primary },
   dragHandle: { padding: 4, marginRight: 4 },
   positionActions: { flexDirection: 'row', gap: 4, marginRight: 8 },
   actionBtn: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
+  actionBtnActive: { backgroundColor: Colors.bgTertiary, borderRadius: 6 },
   positionChildren: { paddingLeft: 20 },
   pilotItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 4, paddingHorizontal: 12, marginLeft: 20 },
   pilotName: { marginLeft: 8, fontSize: 13, fontFamily: FONT, color: Colors.textPrimary },
+  pilotNameLarge: { fontSize: 18, fontFamily: FONT, color: Colors.textPrimary },
+  pilotRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginRight: 8 },
+  pilotRemoveBtn: { padding: 4 },
+  personName: { fontSize: 15, fontFamily: FONT, color: Colors.textPrimary },
   // Select parent modal
   selectBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 },
   selectCard: { backgroundColor: Colors.bgPrimary, borderRadius: BorderRadius.xl, width: '100%', maxWidth: 400, maxHeight: '70%', ...Shadows.large },
@@ -664,10 +792,10 @@ const styles = StyleSheet.create({
   codeText: { flex: 1, fontSize: 16, letterSpacing: 2, fontFamily: FONT },
   codeMeta: { fontSize: 12, color: Colors.textTertiary },
   codeCopyBtn: { padding: 4 },
-  // Pilots
-  pilotsList: { maxHeight: 250 },
-  pilotSelectItem: { padding: Spacing.sm, backgroundColor: Colors.bgSecondary, borderRadius: BorderRadius.md, marginBottom: 4 },
-  pilotSelectItemActive: { backgroundColor: Colors.primary },
-  pilotSelectText: { fontSize: 14, fontFamily: FONT, color: Colors.textPrimary },
-  pilotSelectTextActive: { color: Colors.textInverse },
+  // People
+  peopleList: { maxHeight: 250 },
+  personSelectItem: { padding: Spacing.sm, backgroundColor: Colors.bgSecondary, borderRadius: BorderRadius.md, marginBottom: 4 },
+  personSelectItemActive: { backgroundColor: Colors.primary },
+  personSelectText: { fontSize: 14, fontFamily: FONT, color: Colors.textPrimary },
+  personSelectTextActive: { color: Colors.textInverse },
 });

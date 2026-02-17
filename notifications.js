@@ -1,25 +1,43 @@
 // notifications.js — локальні push-повідомлення про закінчення термінів
-import * as Notifications from 'expo-notifications';
 import { Platform, Vibration } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Constants from 'expo-constants';
 import { getBreaksDataFromSupabase, getAnnualChecksFromSupabase } from './supabaseData';
 
+// Перевіряємо, чи не в Expo Go (Expo Go не підтримує notifications з SDK 53)
+const isExpoGo = Constants.appOwnership === 'expo';
+
+// Умовний імпорт - тільки якщо не Expo Go
+let Notifications = null;
+if (!isExpoGo) {
+  try {
+    Notifications = require('expo-notifications');
+  } catch (e) {
+    // expo-notifications не встановлено
+  }
+}
+
+const notificationsAvailable = !isExpoGo && Notifications !== null;
+
 // ─── Foreground handler: показувати банер навіть коли додаток відкритий ───
-try {
-  Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowAlert: true,
-      shouldPlaySound: true,
-      shouldSetBadge: true,
-    }),
-  });
-} catch (e) {
-  // Notifications not available in Expo Go - silent fail
+if (notificationsAvailable) {
+  try {
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: true,
+        shouldSetBadge: true,
+      }),
+    });
+  } catch (e) {
+    // Silent fail
+  }
 }
 
 // ─── Android канали ───
 export async function setupChannels() {
   if (Platform.OS !== 'android') return;
+  if (!notificationsAvailable) return;
 
   try {
     await Notifications.setNotificationChannelAsync('expired', {
@@ -38,19 +56,20 @@ export async function setupChannels() {
       sound: 'default',
     });
   } catch (e) {
-    // setupChannels not available in Expo Go - silent fail
+    // Silent fail
   }
 }
 
 // ─── Запит дозволу ───
 export async function requestPermissions() {
+  if (!notificationsAvailable) return false;
+
   try {
     const { status: existing } = await Notifications.getPermissionsAsync();
     if (existing === 'granted') return true;
     const { status } = await Notifications.requestPermissionsAsync();
     return status === 'granted';
   } catch (e) {
-    // requestPermissions not available in Expo Go - silent fail
     return false;
   }
 }
@@ -238,37 +257,40 @@ export async function checkAndNotify(pib) {
     const unread = await getUnreadCount();
 
     // Push-повідомлення — максимум 1 раз на день
-    const today = new Date().toISOString().split('T')[0];
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     const lastDate = await AsyncStorage.getItem(STORAGE_KEY);
 
     if (lastDate !== today && alerts.length > 0) {
-      try { await Notifications.dismissAllNotificationsAsync(); } catch (_) {}
+      try { if (notificationsAvailable) await Notifications.dismissAllNotificationsAsync(); } catch (_) {}
 
       const redAlerts = alerts.filter((a) => a.type === 'red');
       const yellowAlerts = alerts.filter((a) => a.type === 'yellow');
 
-      if (redAlerts.length > 0) {
-        await Notifications.scheduleNotificationAsync({
-          content: {
-            title: `Прострочено: ${redAlerts.length}`,
-            body: redAlerts.map((a) => a.body).join('\n'),
-            sound: 'default',
-            ...(Platform.OS === 'android' && { channelId: 'expired' }),
-          },
-          trigger: null,
-        });
-      }
+      if (notificationsAvailable) {
+        if (redAlerts.length > 0) {
+          await Notifications.scheduleNotificationAsync({
+            content: {
+              title: `Прострочено: ${redAlerts.length}`,
+              body: redAlerts.map((a) => a.body).join('\n'),
+              sound: 'default',
+              ...(Platform.OS === 'android' && { channelId: 'expired' }),
+            },
+            trigger: null,
+          });
+        }
 
-      if (yellowAlerts.length > 0) {
-        await Notifications.scheduleNotificationAsync({
-          content: {
-            title: `Скоро закінчується: ${yellowAlerts.length}`,
-            body: yellowAlerts.map((a) => a.body).join('\n'),
-            sound: 'default',
-            ...(Platform.OS === 'android' && { channelId: 'expiring' }),
-          },
-          trigger: null,
-        });
+        if (yellowAlerts.length > 0) {
+          await Notifications.scheduleNotificationAsync({
+            content: {
+              title: `Скоро закінчується: ${yellowAlerts.length}`,
+              body: yellowAlerts.map((a) => a.body).join('\n'),
+              sound: 'default',
+              ...(Platform.OS === 'android' && { channelId: 'expiring' }),
+            },
+            trigger: null,
+          });
+        }
       }
 
       Vibration.vibrate(redAlerts.length > 0 ? [0, 300, 200, 300] : [0, 200]);

@@ -65,6 +65,7 @@ export default function App() {
                 // Оновлюємо expires на +7 днів від зараз (активність продовжує сесію)
                 const WEEK = 7 * 24 * 60 * 60 * 1000;
                 parsed.expires = now + WEEK;
+                await AsyncStorage.setItem('auth', JSON.stringify(parsed)); // зберігаємо оновлений expires
                 setAuth(parsed);
               }
             }

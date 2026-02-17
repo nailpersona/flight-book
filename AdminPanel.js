@@ -1,4 +1,4 @@
-// AdminPanel.js — адмін панель з кнопками Підрозділи та Узагальнення
+// AdminPanel.js — адмін панель з кнопкою Посади
 import React, { useContext } from 'react';
 import {
   View,
@@ -7,7 +7,6 @@ import {
   StyleSheet,
   SafeAreaView,
   ScrollView,
-  Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { AuthCtx } from './contexts';
@@ -48,12 +47,6 @@ export default function AdminPanel({ navigation }) {
             icon="git-network-outline"
             title="Посади"
             onPress={() => tabNavigate('AdminPositions')}
-          />
-
-          <AdminButton
-            icon="grid-outline"
-            title="Узагальнення"
-            onPress={() => Linking.openURL('https://fly-book.vercel.app/tabs/readiness')}
           />
         </View>
 

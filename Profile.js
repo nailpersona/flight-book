@@ -56,6 +56,12 @@ export default function Profile({ navigation }) {
           />
 
           <ProfileButton
+            icon="grid-outline"
+            title="Зведена таблиця"
+            onPress={() => Linking.openURL('https://fly-book.vercel.app/tabs/readiness')}
+          />
+
+          <ProfileButton
             icon="timer-outline"
             title="Перерви за МУ"
             onPress={() =>
@@ -107,10 +113,10 @@ export default function Profile({ navigation }) {
 
           {auth?.role === 'admin' && (
             <ProfileButton
-              icon="settings-outline"
+              icon="shield-checkmark-outline"
               title="Адмін панель"
               onPress={() => tabNavigate('AdminPanel')}
-              dark
+              style={styles.btnAdmin}
             />
           )}
 
@@ -175,5 +181,9 @@ const styles = StyleSheet.create({
   btnLogout: {
     borderWidth: 1,
     borderColor: '#E8B4B4',
+  },
+  btnAdmin: {
+    borderWidth: 1,
+    borderColor: '#A8C8E8',
   },
 });

@@ -2,7 +2,7 @@ import React, { useContext, useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   Platform, SafeAreaView, ActivityIndicator, Image, KeyboardAvoidingView,
-  ScrollView
+  ScrollView, Modal, FlatList
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { AuthCtx } from './contexts';
@@ -20,6 +20,10 @@ export default function Login({ navigation }) {
   const [busy, setBusy] = useState(false);
   const [focused, setFocused] = useState(null);
   const [isRegister, setIsRegister] = useState(false);
+  const [crewRole, setCrewRole] = useState('');
+  const [showRoleModal, setShowRoleModal] = useState(false);
+
+  const CREW_ROLES = ['Пілот', 'Штурман', 'Бортовий технік'];
 
   const onLogin = async () => {
     if (!email.trim() || !pass.trim()) {
@@ -34,13 +38,13 @@ export default function Login({ navigation }) {
       if (rpcErr) throw new Error(rpcErr.message);
       if (!j?.ok) throw new Error(j?.error || 'Помилка входу');
 
-      const WEEK = 7 * 24 * 60 * 60 * 1000;
       const authObj = {
         userId: j.id,
         role: j.role || 'user',
         pib: j.pib || '',
         email: j.email || email.trim(),
-        expires: Date.now() + WEEK,
+        canEditReadiness: j.can_edit_readiness || false,
+        expires: Date.now() + 8 * 60 * 60 * 1000, // 8 hours
       };
       setAuth(authObj);
 
@@ -56,7 +60,7 @@ export default function Login({ navigation }) {
   };
 
   const onRegister = async () => {
-    if (!email.trim() || !pass.trim() || !name.trim() || !inviteCode.trim()) {
+    if (!email.trim() || !pass.trim() || !name.trim() || !inviteCode.trim() || !crewRole) {
       return ThemedAlert.alert('Увага', 'Заповніть усі поля');
     }
     try {
@@ -66,17 +70,18 @@ export default function Login({ navigation }) {
         p_password: pass.trim(),
         p_name: name.trim(),
         p_invite_code: inviteCode.trim(),
+        p_crew_role: crewRole,
       });
       if (rpcErr) throw new Error(rpcErr.message);
       if (!j?.ok) throw new Error(j?.error || 'Помилка реєстрації');
 
-      const WEEK = 7 * 24 * 60 * 60 * 1000;
       const authObj = {
         userId: j.id,
         role: j.role || 'user',
         pib: j.pib || '',
         email: j.email || email.trim(),
-        expires: Date.now() + WEEK,
+        canEditReadiness: j.can_edit_readiness || false,
+        expires: Date.now() + 8 * 60 * 60 * 1000, // 8 hours
       };
       setAuth(authObj);
 
@@ -188,7 +193,7 @@ export default function Login({ navigation }) {
             {/* ПІБ (тільки для реєстрації) */}
             {isRegister && (
               <>
-                <Text style={styles.label}>ПІБ</Text>
+                <Text style={styles.label}>Звання та ПІБ</Text>
                 <View style={[
                   styles.inputWrap,
                   focused === 'name' && styles.inputFocused,
@@ -196,7 +201,7 @@ export default function Login({ navigation }) {
                   <TextInput
                     value={name}
                     onChangeText={setName}
-                    placeholder="Прізвище Ім'я По батькові"
+                    placeholder="п-к Пілот П.П."
                     placeholderTextColor={Colors.textTertiary}
                     style={styles.input}
                     onFocus={() => setFocused('name')}
@@ -204,7 +209,54 @@ export default function Login({ navigation }) {
                   />
                 </View>
 
-                <Text style={styles.label}>Код від командира</Text>
+                <Text style={styles.label}>Роль в екіпажі</Text>
+                <TouchableOpacity
+                  style={styles.roleSelect}
+                  onPress={() => setShowRoleModal(true)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.roleSelectText, !crewRole && styles.roleSelectPlaceholder]}>
+                    {crewRole || 'Оберіть роль'}
+                  </Text>
+                  <Ionicons name="chevron-down" size={16} color="#9CA3AF" />
+                </TouchableOpacity>
+
+                <Modal
+                  visible={showRoleModal}
+                  transparent
+                  animationType="fade"
+                  onRequestClose={() => setShowRoleModal(false)}
+                >
+                  <View style={styles.modalBackdrop}>
+                    <View style={styles.modalCard}>
+                      <Text style={styles.modalTitle}>Роль в екіпажі</Text>
+                      <FlatList
+                        data={CREW_ROLES}
+                        keyExtractor={(item) => item}
+                        style={{ maxHeight: 240 }}
+                        renderItem={({ item }) => (
+                          <TouchableOpacity
+                            style={[styles.optionRow, crewRole === item && styles.optionRowSelected]}
+                            onPress={() => { setCrewRole(item); setShowRoleModal(false); }}
+                          >
+                            <Text style={[styles.optionText, crewRole === item && styles.optionTextSelected]}>
+                              {item}
+                            </Text>
+                            {crewRole === item && <Text style={styles.selectedMark}>✓</Text>}
+                          </TouchableOpacity>
+                        )}
+                      />
+                      <TouchableOpacity
+                        style={styles.modalCloseBtn}
+                        onPress={() => setShowRoleModal(false)}
+                      >
+                        <Text style={styles.modalCloseBtnText}>Закрити</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </Modal>
+
+                <Text style={styles.label}>Код від адміна</Text>
                 <View style={[
                   styles.inputWrap,
                   focused === 'invite' && styles.inputFocused,
@@ -212,7 +264,7 @@ export default function Login({ navigation }) {
                   <TextInput
                     value={inviteCode}
                     onChangeText={setInviteCode}
-                    placeholder="Введіть код від командира"
+                    placeholder="Введіть код від адміна"
                     placeholderTextColor={Colors.textTertiary}
                     autoCapitalize="characters"
                     style={styles.input}
@@ -363,6 +415,92 @@ const styles = StyleSheet.create({
   eyeBtn: {
     paddingHorizontal: 12,
     paddingVertical: 10,
+  },
+
+  // Role selector
+  roleSelect: {
+    minHeight: 44,
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.md,
+    backgroundColor: Colors.bgSecondary,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  roleSelectText: {
+    fontFamily: FONT,
+    fontSize: 15,
+    fontWeight: '400',
+    color: Colors.textPrimary,
+    flex: 1,
+  },
+  roleSelectPlaceholder: {
+    color: Colors.textTertiary,
+  },
+
+  // Modal
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.lg,
+  },
+  modalCard: {
+    backgroundColor: Colors.bgPrimary,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.lg,
+    ...Shadows.large,
+  },
+  modalTitle: {
+    fontFamily: FONT,
+    fontSize: 16,
+    fontWeight: '400',
+    marginBottom: 12,
+    color: Colors.textPrimary,
+  },
+  optionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: Spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Colors.borderLight,
+  },
+  optionRowSelected: {
+    backgroundColor: Colors.bgSecondary,
+  },
+  optionText: {
+    fontFamily: FONT,
+    fontSize: 15,
+    fontWeight: '400',
+    color: Colors.textPrimary,
+    flex: 1,
+  },
+  optionTextSelected: {
+    color: Colors.primary,
+  },
+  selectedMark: {
+    fontFamily: FONT,
+    color: Colors.success,
+    fontSize: 14,
+    fontWeight: '400',
+    marginLeft: 8,
+  },
+  modalCloseBtn: {
+    marginTop: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+    backgroundColor: Colors.bgSecondary,
+    borderRadius: BorderRadius.md,
+  },
+  modalCloseBtnText: {
+    fontFamily: FONT,
+    fontSize: 15,
+    fontWeight: '400',
+    color: Colors.textSecondary,
   },
 
   // Button

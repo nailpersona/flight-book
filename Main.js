@@ -285,6 +285,230 @@ function FuelPopup({ fuel, onSave }) {
   );
 }
 
+// ─── Модальне вікно додавання екіпажу ───
+
+function CrewModal({ visible, aircraftType, roles, showTechnician, pilots, crew, onSave, onClose }) {
+  const [selectedRole, setSelectedRole] = useState('');
+  const [selectedPilot, setSelectedPilot] = useState(null); // {id, name}
+  const [customName, setCustomName] = useState('');
+  const [technicianRole] = useState('Бортовий технік');
+  const [technicianPilot, setTechnicianPilot] = useState(null);
+  const [technicianCustom, setTechnicianCustom] = useState('');
+
+  const [showRolePicker, setShowRolePicker] = useState(false);
+  const [showNamePicker, setShowNamePicker] = useState(false);
+  const [showTechNamePicker, setShowTechNamePicker] = useState(false);
+
+  // Визначаємо, чи вже є член екіпажу з цією роллю
+  const isRoleTaken = (role) => crew.some(m => m.role === role);
+
+  const handleAddMember = () => {
+    if (!selectedRole) return;
+    const name = customName.trim() || selectedPilot?.name;
+    if (!name) return;
+
+    // Якщо введено вручну - userId буде null
+    const userId = customName.trim() ? null : selectedPilot?.id;
+
+    onSave([...crew, { role: selectedRole, name, userId }]);
+    setSelectedRole('');
+    setSelectedPilot(null);
+    setCustomName('');
+  };
+
+  const handleAddTechnician = () => {
+    const name = technicianCustom.trim() || technicianPilot?.name;
+    if (!name) return;
+
+    const userId = technicianCustom.trim() ? null : technicianPilot?.id;
+
+    // Видаляємо попереднього техніка якщо є
+    const filtered = crew.filter(m => m.role !== technicianRole);
+    onSave([...filtered, { role: technicianRole, name, userId }]);
+    setTechnicianPilot(null);
+    setTechnicianCustom('');
+  };
+
+  // Фільтруємо доступні ролі (ті, що ще не зайняті)
+  const availableRoles = roles.filter(r => !isRoleTaken(r));
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={s.modalBackdrop}>
+        <View style={[s.modalCard, { maxHeight: '85%' }]}>
+          <Text style={s.modalTitle}>Додати екіпаж ({aircraftType})</Text>
+
+          {/* Існуючий екіпаж */}
+          {crew.length > 0 && (
+            <View style={{ marginBottom: Spacing.md }}>
+              <Text style={s.crewModalLabel}>Додані члени екіпажу:</Text>
+              {crew.map((member, index) => (
+                <View key={index} style={s.crewModalItem}>
+                  <Text style={s.crewModalRole}>{member.role}:</Text>
+                  <Text style={s.crewModalName}>{member.name}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {/* Вибір ролі */}
+          {availableRoles.length > 0 && (
+            <>
+              <Text style={s.crewModalLabel}>Роль:</Text>
+              <TouchableOpacity
+                style={s.select}
+                onPress={() => setShowRolePicker(true)}
+                activeOpacity={0.85}
+              >
+                <Text style={[s.selectText, !selectedRole && { color: Colors.textTertiary }]}>
+                  {selectedRole || 'Оберіть роль'}
+                </Text>
+                <Ionicons name="chevron-down" size={16} color={Colors.textTertiary} />
+              </TouchableOpacity>
+
+              <Modal visible={showRolePicker} transparent animationType="fade" onRequestClose={() => setShowRolePicker(false)}>
+                <View style={s.modalBackdrop}>
+                  <View style={s.modalCard}>
+                    <Text style={s.modalTitle}>Оберіть роль</Text>
+                    <FlatList
+                      data={availableRoles}
+                      keyExtractor={(item) => item}
+                      style={{ maxHeight: 240 }}
+                      renderItem={({ item }) => (
+                        <TouchableOpacity
+                          onPress={() => { setSelectedRole(item); setShowRolePicker(false); }}
+                          style={s.optionRow}
+                        >
+                          <Text style={s.optionText}>{item}</Text>
+                        </TouchableOpacity>
+                      )}
+                    />
+                    <SecondaryButton title="Закрити" onPress={() => setShowRolePicker(false)} style={{ marginTop: Spacing.sm }} />
+                  </View>
+                </View>
+              </Modal>
+            </>
+          )}
+
+          {/* Вибір прізвища або введення */}
+          {selectedRole && (
+            <>
+              <Text style={s.crewModalLabel}>Прізвище:</Text>
+
+              <TouchableOpacity
+                style={s.select}
+                onPress={() => setShowNamePicker(true)}
+                activeOpacity={0.85}
+              >
+                <Text style={[s.selectText, !selectedPilot && { color: Colors.textTertiary }]}>
+                  {selectedPilot?.name || 'Оберіть зі списку'}
+                </Text>
+                <Ionicons name="chevron-down" size={16} color={Colors.textTertiary} />
+              </TouchableOpacity>
+
+              <Modal visible={showNamePicker} transparent animationType="fade" onRequestClose={() => setShowNamePicker(false)}>
+                <View style={s.modalBackdrop}>
+                  <View style={s.modalCard}>
+                    <Text style={s.modalTitle}>Оберіть пілота</Text>
+                    <FlatList
+                      data={pilots}
+                      keyExtractor={(item) => item.id}
+                      style={{ maxHeight: 300 }}
+                      renderItem={({ item }) => (
+                        <TouchableOpacity
+                          onPress={() => { setSelectedPilot(item); setShowNamePicker(false); }}
+                          style={s.optionRow}
+                        >
+                          <Text style={s.optionText}>{item.name}</Text>
+                        </TouchableOpacity>
+                      )}
+                    />
+                    <SecondaryButton title="Закрити" onPress={() => setShowNamePicker(false)} style={{ marginTop: Spacing.sm }} />
+                  </View>
+                </View>
+              </Modal>
+
+              <Text style={[s.crewModalLabel, { marginTop: Spacing.sm }]}>Або введіть вручну:</Text>
+              <TextInput
+                style={[s.input, s.inputText]}
+                placeholder="Прізвище Ім'я"
+                placeholderTextColor={Colors.textTertiary}
+                value={customName}
+                onChangeText={setCustomName}
+              />
+
+              <DarkButton
+                title="Додати"
+                onPress={handleAddMember}
+                style={{ marginTop: Spacing.md }}
+                disabled={!customName.trim() && !selectedPilot}
+              />
+            </>
+          )}
+
+          {/* Бортовий технік для Мі-8 */}
+          {showTechnician && !crew.some(m => m.role === technicianRole) && (
+            <View style={{ marginTop: Spacing.lg, paddingTop: Spacing.md, borderTopWidth: 1, borderTopColor: Colors.borderLight }}>
+              <Text style={s.crewModalLabel}>Бортовий технік:</Text>
+
+              <TouchableOpacity
+                style={s.select}
+                onPress={() => setShowTechNamePicker(true)}
+                activeOpacity={0.85}
+              >
+                <Text style={[s.selectText, !technicianPilot && { color: Colors.textTertiary }]}>
+                  {technicianPilot?.name || 'Оберіть зі списку'}
+                </Text>
+                <Ionicons name="chevron-down" size={16} color={Colors.textTertiary} />
+              </TouchableOpacity>
+
+              <Modal visible={showTechNamePicker} transparent animationType="fade" onRequestClose={() => setShowTechNamePicker(false)}>
+                <View style={s.modalBackdrop}>
+                  <View style={s.modalCard}>
+                    <Text style={s.modalTitle}>Оберіть техніка</Text>
+                    <FlatList
+                      data={pilots}
+                      keyExtractor={(item) => item.id}
+                      style={{ maxHeight: 300 }}
+                      renderItem={({ item }) => (
+                        <TouchableOpacity
+                          onPress={() => { setTechnicianPilot(item); setShowTechNamePicker(false); }}
+                          style={s.optionRow}
+                        >
+                          <Text style={s.optionText}>{item.name}</Text>
+                        </TouchableOpacity>
+                      )}
+                    />
+                    <SecondaryButton title="Закрити" onPress={() => setShowTechNamePicker(false)} style={{ marginTop: Spacing.sm }} />
+                  </View>
+                </View>
+              </Modal>
+
+              <Text style={[s.crewModalLabel, { marginTop: Spacing.sm }]}>Або введіть вручну:</Text>
+              <TextInput
+                style={[s.input, s.inputText]}
+                placeholder="Прізвище Ім'я"
+                placeholderTextColor={Colors.textTertiary}
+                value={technicianCustom}
+                onChangeText={setTechnicianCustom}
+              />
+
+              <DarkButton
+                title="Додати техніка"
+                onPress={handleAddTechnician}
+                style={{ marginTop: Spacing.sm }}
+                disabled={!technicianCustom.trim() && !technicianPilot}
+              />
+            </View>
+          )}
+
+          <SecondaryButton title="Готово" onPress={onClose} style={{ marginTop: Spacing.lg }} />
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 // ─── Модальне вікно зворотного зв'язку після польоту ───
 
 function FlightFeedbackModal({ visible, data, onClose }) {
@@ -372,7 +596,8 @@ function FlightFeedbackModal({ visible, data, onClose }) {
         .filter(([, v]) => v)
         .map(([k]) => k);
 
-      const isControl = data.isControl || false;
+      // Визначаємо тип подовження на основі flight_type та наявності інструктора
+      const extensionType = getExtensionType(data.flightType, data.hasInstructor);
 
       // Update lp_break_dates via RPC
       for (const lp of selectedLp) {
@@ -381,8 +606,45 @@ function FlightFeedbackModal({ visible, data, onClose }) {
           p_lp_type: lp,
           p_aircraft_type_id: data.aircraftTypeId,
           p_date: data.flightDate,
-          p_is_control: isControl,
+          p_extension_type: extensionType,
         });
+      }
+
+      // Оновити LP для членів екіпажу
+      const { data: crewMembers } = await supabase
+        .from('flight_crew')
+        .select('user_id, role')
+        .eq('flight_id', data.flightId);
+
+      if (crewMembers && crewMembers.length > 0) {
+        for (const member of crewMembers) {
+          // Визначаємо extension_type для ролі
+          let crewExtensionType = 'none';
+          switch (member.role) {
+            case 'Інструктор':
+            case 'Штурман':
+              crewExtensionType = 'full';
+              break;
+            case 'Правий пілот':
+              crewExtensionType = 'control';
+              break;
+            case 'У складі екіпажу':
+            default:
+              crewExtensionType = 'none';
+              break;
+          }
+
+          // Оновлюємо LP для члена екіпажу з тими ж LP типами
+          for (const lp of selectedLp) {
+            await supabase.rpc('upsert_lp_break', {
+              p_user_id: member.user_id,
+              p_lp_type: lp,
+              p_aircraft_type_id: data.aircraftTypeId,
+              p_date: data.flightDate,
+              p_extension_type: crewExtensionType,
+            });
+          }
+        }
       }
 
       // AI learning: vote for single-exercise flights
@@ -518,6 +780,25 @@ function FlightFeedbackModal({ visible, data, onClose }) {
   );
 }
 
+// ─── Функція визначення типу подовження ───
+
+function getExtensionType(flightType, hasInstructor) {
+  switch (flightType) {
+    case 'Контрольний':
+      return 'control'; // +10 днів
+    case 'Тренувальний':
+    case 'За інструктора':
+      return 'full'; // повний термін
+    case 'У складі екіпажу':
+      return 'none'; // нічого
+    case 'На випробування':
+    case 'За методиками ЛВ':
+      return hasInstructor ? 'control' : 'full';
+    default:
+      return 'full';
+  }
+}
+
 // ─── Головний екран ───
 
 export default function Main({ route, navigation }) {
@@ -557,6 +838,24 @@ export default function Main({ route, navigation }) {
   const [editMode, setEditMode] = useState(false);
   const [editFlightId, setEditFlightId] = useState(null);
 
+  // Екіпаж
+  const [showCrewModal, setShowCrewModal] = useState(false);
+  const [crewMembers, setCrewMembers] = useState([]); // [{role: 'Інструктор', name: 'Іванов', userId: 'uuid'}]
+  const [allPilots, setAllPilots] = useState([]); // [{name: 'Іванов', id: 'uuid'}]
+
+  // Конфігурація ролей за типом ПС
+  const CREW_ROLES_CONFIG = {
+    'Су-27': ['Інструктор', 'В складі екіпажу'],
+    'Міг-29': ['Інструктор', 'В складі екіпажу'],
+    'Л-39': ['Інструктор', 'В складі екіпажу'],
+    'Су-24': ['Штурман', 'Інструктор'],
+    'Мі-8': ['Правий пілот', 'Штурман', 'Інструктор'],
+    'Мі-24': ['Штурман', 'Інструктор'],
+    'Мі-2': ['Правий пілот', 'Штурман', 'Інструктор'],
+  };
+
+  const HELICOPTER_TECHNICIAN = ['Мі-8']; // Для цих вертольотів додається бортовий технік
+
   // Завантажити вправи та налаштування записів з Supabase
   useEffect(() => {
     const load = async () => {
@@ -567,6 +866,15 @@ export default function Main({ route, navigation }) {
           .order('id');
         if (error) throw error;
         setAllExercises(data || []);
+
+        // Завантажити список пілотів для вибору екіпажу
+        const { data: pilotsData } = await supabase
+          .from('users')
+          .select('id, name')
+          .order('name');
+        if (pilotsData) {
+          setAllPilots(pilotsData.filter(p => p.name));
+        }
 
         // Завантажити налаштування записів пілота
         if (auth?.email) {
@@ -614,8 +922,8 @@ export default function Main({ route, navigation }) {
 
     // Вид польоту (зворотній маппінг для форми)
     const rawFT = data.flight_type || '';
-    if (rawFT === 'Учбово-тренув.') {
-      setFlightType('Учбово-тренувальний');
+    if (rawFT === 'Тренувальний') {
+      setFlightType('Тренувальний');
     } else {
       setFlightType(rawFT);
     }
@@ -655,6 +963,11 @@ export default function Main({ route, navigation }) {
     setSelectedExercises([]);
   }, [docSource]);
 
+  // Скидання екіпажу при зміні типу ПС
+  useEffect(() => {
+    setCrewMembers([]);
+  }, [typePs]);
+
   // Автозаповнення мети польоту з обраних вправ
   const exercisesText = useMemo(() => {
     return selectedExercises.map(e => {
@@ -692,6 +1005,7 @@ export default function Main({ route, navigation }) {
     setCombatApps('');
     setFuel({ airfield: '', amount: '' });
     setFlightPurpose('');
+    setCrewMembers([]);
     setEditMode(false);
     setEditFlightId(null);
   };
@@ -707,8 +1021,7 @@ export default function Main({ route, navigation }) {
 
       // Режим редагування — оновити в Supabase
       if (editMode && editFlightId) {
-        let dbFlightType = flightType;
-        if (flightType === 'Учбово-тренувальний') dbFlightType = 'Учбово-тренув.';
+        const dbFlightType = flightType;
 
         const time_of_day = timeDayMu[0];
         const weather_conditions = timeDayMu.substring(1);
@@ -718,10 +1031,12 @@ export default function Main({ route, navigation }) {
           .from('aircraft_types').select('id').eq('name', typePs).single();
         if (atErr || !atData) throw new Error('Тип ПС не знайдено');
 
+        // Формуємо YYYY-MM-DD без зміщення timezone
+        const dateStr = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`;
         const { error: updateErr } = await supabase
           .from('flights')
           .update({
-            date: dateObj.toISOString().split('T')[0],
+            date: dateStr,
             aircraft_type_id: atData.id,
             time_of_day,
             weather_conditions,
@@ -767,15 +1082,17 @@ export default function Main({ route, navigation }) {
       if (atErr || !atData) throw new Error('Тип ПС не знайдено');
 
       // Map flight type
-      let dbFlightType = flightType;
-      if (flightType === 'Учбово-тренувальний') dbFlightType = 'Учбово-тренув.';
+      const dbFlightType = flightType;
+
+      // Формуємо YYYY-MM-DD без зміщення timezone
+      const flightDateStr = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`;
 
       // Insert flight
       const { data: flight, error: flightErr } = await supabase
         .from('flights')
         .insert({
           user_id: userData.id,
-          date: dateObj.toISOString().split('T')[0],
+          date: flightDateStr,
           aircraft_type_id: atData.id,
           time_of_day,
           weather_conditions,
@@ -815,6 +1132,48 @@ export default function Main({ route, navigation }) {
         });
       }
 
+      // Зберегти членів екіпажу в flight_crew та створити для них польоти
+      const crewWithUserId = crewMembers.filter(m => m.userId);
+      for (const member of crewWithUserId) {
+        // Створюємо політ для члена екіпажу
+        const { data: crewFlight } = await supabase
+          .from('flights')
+          .insert({
+            user_id: member.userId,
+            date: flightDateStr,
+            aircraft_type_id: atData.id,
+            time_of_day,
+            weather_conditions,
+            flight_type: 'У складі екіпажу',
+            document_source: docSource || null,
+            flight_time: toHhMmSs(nalit),
+            combat_applications: 0,
+            flight_purpose: `${member.role}: ${member.name}`,
+            flights_count: 1,
+          })
+          .select()
+          .maybeSingle();
+
+        // Зберігаємо роль в flight_crew
+        if (crewFlight) {
+          await supabase.from('flight_crew').insert({
+            flight_id: flight.id,
+            user_id: member.userId,
+            role: member.role,
+          });
+        }
+
+        // Копіюємо вправи в політ члена екіпажу
+        if (crewFlight && selectedExercises.length > 0) {
+          await supabase
+            .from('flight_exercises')
+            .insert(selectedExercises.map(ex => ({
+              flight_id: crewFlight.id,
+              exercise_id: ex.id,
+            })));
+        }
+      }
+
       // Small delay for triggers to complete, then get detection log
       await new Promise(r => setTimeout(r, 300));
       const { data: log } = await supabase
@@ -824,7 +1183,53 @@ export default function Main({ route, navigation }) {
         .maybeSingle();
 
       const detectedMu = log?.detected_mu || [];
-      const isControl = selectedExercises.length > 0 && selectedExercises.every(ex => ex.is_control);
+
+      // Визначаємо ролі екіпажу та наявність інструктора
+      const crewRoles = crewMembers.map(m => m.role);
+      const hasInstructor = crewRoles.includes('Інструктор');
+
+      // Визначаємо extension_type для МУ на основі flight_type
+      const muExtensionType = getExtensionType(dbFlightType, hasInstructor);
+
+      // Оновлюємо МУ для пілота (автоматично, без popup)
+      if (detectedMu.length > 0 && muExtensionType !== 'none') {
+        await supabase.rpc('upsert_mu_break', {
+          p_user_id: userData.id,
+          p_aircraft_type_id: atData.id,
+          p_mu_conditions: detectedMu,
+          p_date: flightDateStr,
+          p_extension_type: muExtensionType,
+        });
+      }
+
+      // Оновлюємо МУ для членів екіпажу
+      for (const member of crewWithUserId) {
+        // Визначаємо extension_type для ролі
+        let crewMuExtensionType = 'none';
+        switch (member.role) {
+          case 'Інструктор':
+          case 'Штурман':
+            crewMuExtensionType = 'full';
+            break;
+          case 'Правий пілот':
+            crewMuExtensionType = 'control';
+            break;
+          case 'У складі екіпажу':
+          default:
+            crewMuExtensionType = 'none';
+            break;
+        }
+
+        if (detectedMu.length > 0 && crewMuExtensionType !== 'none') {
+          await supabase.rpc('upsert_mu_break', {
+            p_user_id: member.userId,
+            p_aircraft_type_id: atData.id,
+            p_mu_conditions: detectedMu,
+            p_date: flightDateStr,
+            p_extension_type: crewMuExtensionType,
+          });
+        }
+      }
 
       // Show popup when KBP selected or MU detected
       const kbpDocs = ['КБП ВА', 'КБП БА/РА', 'КБПВ'];
@@ -835,8 +1240,10 @@ export default function Main({ route, navigation }) {
           docSource: docSource || null,
           exerciseIds: selectedExercises.map(e => e.id),
           aircraftTypeId: atData.id,
-          flightDate: dateObj.toISOString().split('T')[0],
-          isControl,
+          flightDate: flightDateStr,
+          flightType: dbFlightType, // Вид польоту
+          crewRoles, // Ролі екіпажу
+          hasInstructor, // Чи є інструктор
           detectedMu,
           logId: log?.id,
         });
@@ -900,7 +1307,7 @@ export default function Main({ route, navigation }) {
                   value={flightType}
                   onChange={setFlightType}
                   placeholder=" "
-                  options={['Учбово-тренувальний', 'На випробування', 'У складі екіпажу', 'За інструктора', 'За методиками ЛВ']}
+                  options={['Контрольний', 'Тренувальний', 'За інструктора', 'У складі екіпажу', 'На випробування', 'За методиками ЛВ']}
                 />
               </View>
             </View>
@@ -913,6 +1320,38 @@ export default function Main({ route, navigation }) {
                   value={testTopic}
                   onChangeText={setTestTopic}
                 />
+              </View>
+            )}
+
+            {/* Кнопка додавання екіпажу */}
+            {CREW_ROLES_CONFIG[typePs] && (
+              <TouchableOpacity
+                style={s.addCrewBtn}
+                onPress={() => setShowCrewModal(true)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="people-outline" size={18} color={Colors.textSecondary} />
+                <Text style={s.addCrewBtnText}>
+                  {crewMembers.length > 0 ? `Екіпаж (${crewMembers.length})` : '+ Додати екіпаж'}
+                </Text>
+              </TouchableOpacity>
+            )}
+
+            {/* Відображення доданого екіпажу */}
+            {crewMembers.length > 0 && (
+              <View style={s.crewList}>
+                {crewMembers.map((member, index) => (
+                  <View key={index} style={s.crewItem}>
+                    <Text style={s.crewRole}>{member.role}</Text>
+                    <Text style={s.crewName}>{member.name}</Text>
+                    <TouchableOpacity
+                      onPress={() => setCrewMembers(prev => prev.filter((_, i) => i !== index))}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Text style={s.crewRemove}>✕</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))}
               </View>
             )}
           </Section>
@@ -1014,6 +1453,17 @@ export default function Main({ route, navigation }) {
         visible={showFeedback}
         data={feedbackData}
         onClose={() => { setShowFeedback(false); setFeedbackData(null); }}
+      />
+
+      <CrewModal
+        visible={showCrewModal}
+        aircraftType={typePs}
+        roles={CREW_ROLES_CONFIG[typePs] || []}
+        showTechnician={HELICOPTER_TECHNICIAN.includes(typePs)}
+        pilots={allPilots}
+        crew={crewMembers}
+        onSave={setCrewMembers}
+        onClose={() => setShowCrewModal(false)}
       />
     </SafeAreaView>
   );
@@ -1332,5 +1782,83 @@ const s = StyleSheet.create({
     backgroundColor: Colors.bgPrimary,
     borderWidth: 1,
     borderColor: Colors.border,
+  },
+
+  // Crew styles
+  addCrewBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    marginTop: Spacing.sm,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.bgSecondary,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderStyle: 'dashed',
+  },
+  addCrewBtnText: {
+    fontFamily: FONT,
+    fontSize: 15,
+    fontWeight: '400',
+    color: Colors.textSecondary,
+  },
+  crewList: {
+    marginTop: Spacing.sm,
+  },
+  crewItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.bgSecondary,
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 10,
+    marginBottom: 6,
+  },
+  crewRole: {
+    fontFamily: FONT,
+    fontSize: 13,
+    fontWeight: '400',
+    color: Colors.textSecondary,
+    width: 110,
+  },
+  crewName: {
+    fontFamily: FONT,
+    fontSize: 14,
+    fontWeight: '400',
+    color: Colors.textPrimary,
+    flex: 1,
+  },
+  crewRemove: {
+    fontFamily: FONT,
+    fontSize: 14,
+    color: Colors.textTertiary,
+    marginLeft: Spacing.sm,
+  },
+  crewModalLabel: {
+    fontFamily: FONT,
+    fontSize: 13,
+    fontWeight: '400',
+    color: Colors.textSecondary,
+    marginBottom: 4,
+  },
+  crewModalItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  crewModalRole: {
+    fontFamily: FONT,
+    fontSize: 14,
+    fontWeight: '400',
+    color: Colors.textSecondary,
+    width: 120,
+  },
+  crewModalName: {
+    fontFamily: FONT,
+    fontSize: 14,
+    fontWeight: '400',
+    color: Colors.textPrimary,
   },
 });

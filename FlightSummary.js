@@ -51,7 +51,7 @@ function getDateRange(periodKey) {
 }
 
 function toISO(d) {
-  return d.toISOString().split('T')[0];
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 function fmtDate(d) {
@@ -112,12 +112,8 @@ export default function FlightSummary({ navigation }) {
 
   const load = useCallback(async () => {
     try {
-      if (!auth?.pib) return;
+      if (!auth?.userId) return;
       setLoading(true);
-
-      const { data: u, error: ue } = await supabase
-        .from('users').select('id').eq('name', auth.pib).single();
-      if (ue || !u) throw new Error('Користувача не знайдено');
 
       let range;
       if (period === 'custom') {
@@ -134,7 +130,7 @@ export default function FlightSummary({ navigation }) {
           test_flight_topic,
           flight_exercises(exercise_id, exercises(is_control))
         `)
-        .eq('user_id', u.id)
+        .eq('user_id', auth.userId)
         .gte('date', toISO(range.start))
         .lte('date', toISO(range.end))
         .order('date', { ascending: true });
@@ -165,7 +161,7 @@ export default function FlightSummary({ navigation }) {
     } finally {
       setLoading(false);
     }
-  }, [auth?.pib, period, customStart, customEnd]);
+  }, [auth?.userId, period, customStart, customEnd]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -280,7 +276,10 @@ export default function FlightSummary({ navigation }) {
           <Ionicons name="chevron-back" size={20} color={Colors.textPrimary} />
         </TouchableOpacity>
         <Text style={s.headerTitle}>Підсумки</Text>
-        <View style={{ width: 36 }} />
+        <TouchableOpacity style={s.headerSelect} activeOpacity={0.85} onPress={() => setMenuOpen(true)}>
+          <Text style={s.headerSelectText}>{periodLabel}</Text>
+          <Ionicons name="chevron-down" size={14} color={Colors.textSecondary} />
+        </TouchableOpacity>
       </View>
 
       <ScrollView
@@ -290,14 +289,6 @@ export default function FlightSummary({ navigation }) {
           <RefreshControl refreshing={loading} onRefresh={load} colors={[Colors.primary]} tintColor={Colors.primary} />
         }
       >
-        {/* Фільтр періоду — випадаюче меню */}
-        <View style={s.filterWrap}>
-          <TouchableOpacity style={s.select} activeOpacity={0.85} onPress={() => setMenuOpen(true)}>
-            <Text style={s.selectText}>{periodLabel}</Text>
-            <Ionicons name="chevron-down" size={16} color={Colors.textTertiary} />
-          </TouchableOpacity>
-        </View>
-
         {/* Вибір дат для кастомного періоду */}
         {period === 'custom' && (
           <View style={s.customRow}>
@@ -414,33 +405,25 @@ const s = StyleSheet.create({
     fontWeight: '400',
     color: Colors.textPrimary,
   },
+  headerSelect: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: BorderRadius.sm,
+    backgroundColor: Colors.bgSecondary,
+  },
+  headerSelectText: {
+    fontFamily: FONT,
+    fontSize: 13,
+    fontWeight: '400',
+    color: Colors.textSecondary,
+  },
 
   // Scroll
   scroll: { flex: 1 },
   scrollContent: { padding: Spacing.lg },
-
-  // Filter dropdown
-  filterWrap: {
-    alignItems: 'center',
-    marginBottom: Spacing.lg,
-  },
-  select: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    minHeight: 44,
-    borderRadius: BorderRadius.md,
-    paddingHorizontal: Spacing.lg,
-    backgroundColor: Colors.bgPrimary,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  selectText: {
-    fontFamily: FONT,
-    fontSize: 16,
-    fontWeight: '400',
-    color: Colors.textPrimary,
-  },
 
   // Modal
   modalBackdrop: {
@@ -601,7 +584,7 @@ const s = StyleSheet.create({
   // Grand total
   grandRow: {
     flexDirection: 'row',
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.bgSecondary,
     borderRadius: BorderRadius.md,
     padding: Spacing.lg,
     gap: Spacing.lg,
@@ -615,7 +598,7 @@ const s = StyleSheet.create({
     fontFamily: FONT,
     fontSize: 22,
     fontWeight: '400',
-    color: Colors.textInverse,
+    color: Colors.textPrimary,
     marginBottom: 2,
   },
 

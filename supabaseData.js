@@ -2,6 +2,11 @@ import { supabase } from './supabase';
 
 const MU_TYPES = ['ДПМУ', 'ДСМУ', 'ДВМП', 'НПМУ', 'НСМУ', 'НВМП'];
 
+// Конвертує Date у рядок YYYY-MM-DD без зміщення timezone
+function dateToISO(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 // Mapping: KBP normalized LP type → КЛПВ normalized LP type (by concept)
 const KLPV_KBP_MAP = {
   'КБП ВА': {
@@ -154,7 +159,7 @@ export async function getBreaksDataFromSupabase(pib) {
         if (lastDate && allowed) {
           const exp = new Date(lastDate);
           exp.setDate(exp.getDate() + allowed);
-          trainingExpiry = exp.toISOString().split('T')[0];
+          trainingExpiry = dateToISO(exp);
         }
 
         // Control expiry = last_control_date + 10 days
@@ -162,7 +167,7 @@ export async function getBreaksDataFromSupabase(pib) {
         if (lastControlDate) {
           const exp = new Date(lastControlDate);
           exp.setDate(exp.getDate() + 10);
-          controlExpiry = exp.toISOString().split('T')[0];
+          controlExpiry = dateToISO(exp);
         }
 
         // Effective expiry = MAX(training, control)
@@ -216,16 +221,25 @@ export async function getBreaksDataFromSupabase(pib) {
     }
 
     // Determine which KBPs pilot has + which aircraft per KBP
-    // Main aircraft (1 non-КЛПВ KBP) activate their KBP
-    // Dependent aircraft like Л-39 (multiple KBPs) only join already-activated KBPs
+    // Use is_primary flag to determine primary KBP for multi-KBP aircraft
     const kbpToAircraft = {};
     const activeKbps = new Set();
     const dependentAcIds = [];
 
+    // Build a map of aircraft_type_id -> primary KBP (using is_primary flag)
+    const aircraftPrimaryKbp = {};
+    kbpMappings.forEach(m => {
+      if (m.kbp_document === 'КЛПВ') return;
+      if (m.is_primary) {
+        aircraftPrimaryKbp[m.aircraft_type_id] = m.kbp_document;
+      }
+    });
+
     pilotAcIds.forEach(acId => {
       const kbps = aircraftToKbp[acId] || [];
+      const primaryKbp = aircraftPrimaryKbp[acId];
+
       if (kbps.length === 1) {
-        // Main aircraft — activates its KBP
         const kbp = kbps[0];
         activeKbps.add(kbp);
         if (!kbpToAircraft[kbp]) kbpToAircraft[kbp] = [];
@@ -234,8 +248,18 @@ export async function getBreaksDataFromSupabase(pib) {
           kbpToAircraft[kbp].push(acName);
         }
       } else if (kbps.length > 1) {
-        // Dependent (e.g., Л-39) — added to activated KBPs later
-        dependentAcIds.push(acId);
+        if (primaryKbp) {
+          // Use is_primary flag to determine primary KBP
+          activeKbps.add(primaryKbp);
+          if (!kbpToAircraft[primaryKbp]) kbpToAircraft[primaryKbp] = [];
+          const acName = aircraftMap[acId];
+          if (acName && !kbpToAircraft[primaryKbp].includes(acName)) {
+            kbpToAircraft[primaryKbp].push(acName);
+          }
+        } else {
+          // No primary flag — mark as dependent
+          dependentAcIds.push(acId);
+        }
       }
     });
 
@@ -325,7 +349,7 @@ export async function getBreaksDataFromSupabase(pib) {
           if (lastDate && allowedDays) {
             const exp = new Date(lastDate);
             exp.setDate(exp.getDate() + allowedDays);
-            trainingExpiry = exp.toISOString().split('T')[0];
+            trainingExpiry = dateToISO(exp);
           }
 
           // Control expiry = last_control_date + 10 days
@@ -333,7 +357,7 @@ export async function getBreaksDataFromSupabase(pib) {
           if (lastControlDate) {
             const exp = new Date(lastControlDate);
             exp.setDate(exp.getDate() + 10);
-            controlExpiry = exp.toISOString().split('T')[0];
+            controlExpiry = dateToISO(exp);
           }
 
           // Effective expiry = MAX(training, control)
@@ -420,7 +444,7 @@ export async function getBreaksDataFromSupabase(pib) {
         if (!item.rawDate) return;
         const exp = new Date(item.rawDate);
         exp.setDate(exp.getDate() + klpvAllowedDays);
-        const klpvExpiry = exp.toISOString().split('T')[0];
+        const klpvExpiry = dateToISO(exp);
         item.klpvExpiryDate = formatDate(klpvExpiry);
         item.klpvColor = computeColorFromExpiry(klpvExpiry);
       });
@@ -454,7 +478,7 @@ export async function getBreaksDataFromSupabase(pib) {
         if (lastDate && allowedDays) {
           const exp = new Date(lastDate);
           exp.setDate(exp.getDate() + allowedDays);
-          expiryDate = exp.toISOString().split('T')[0];
+          expiryDate = dateToISO(exp);
         }
         const color = expiryDate ? computeColorFromExpiry(expiryDate) : 'gray';
         return {
@@ -515,7 +539,7 @@ export async function getBreaksDataFromSupabase(pib) {
       if (!dateStr) return null;
       const d = new Date(dateStr);
       d.setMonth(d.getMonth() + m);
-      return d.toISOString().split('T')[0];
+      return dateToISO(d);
     }
 
     const llkExpiry = addMonths(llkDate, 12); // ЛЛК valid for 1 year
@@ -630,7 +654,7 @@ export async function updateLpBreakDateInSupabase(pib, lpTypeNormalized, aircraf
     if (existing && existing.length > 0) {
       const { error } = await supabase
         .from('lp_break_dates')
-        .update({ last_date: isoDate })
+        .update({ last_date: isoDate, aircraft_type_id: aircraftTypeId })
         .eq('id', existing[0].id);
       if (error) throw error;
     } else {
@@ -732,7 +756,7 @@ export async function updateAnnualCheckDateInSupabase(pib, checkType, dateStr) {
     const monthsValid = 12;
     const d = new Date(isoDate);
     d.setMonth(d.getMonth() + monthsValid);
-    const expiryDate = d.toISOString().split('T')[0];
+    const expiryDate = dateToISO(d);
 
     // Check if entry exists
     const { data: existing } = await supabase
@@ -808,7 +832,7 @@ export async function updateCommissionDateInSupabase(pib, category, dateStr) {
     } else {
       d.setDate(d.getDate() + cType.days);
     }
-    const expiryDate = d.toISOString().split('T')[0];
+    const expiryDate = dateToISO(d);
 
     // Fetch existing entry for this type
     const { data: existing } = await supabase
