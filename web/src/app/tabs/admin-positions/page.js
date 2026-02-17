@@ -5,7 +5,8 @@ import {
   IoChevronBack, IoAddOutline, IoChevronDown, IoChevronForward,
   IoPersonAddOutline, IoPersonRemoveOutline, IoKeyOutline,
   IoCreateOutline, IoTrashOutline, IoInformationCircleOutline,
-  IoFolderOutline, IoFolderOpenOutline, IoCopyOutline, IoAddCircleOutline
+  IoFolderOutline, IoFolderOpenOutline, IoCopyOutline, IoAddCircleOutline,
+  IoCheckboxOutline, IoSquareOutline
 } from 'react-icons/io5';
 import { useAuth } from '../../../lib/auth';
 import { supabase } from '../../../lib/supabase';
@@ -49,7 +50,7 @@ export default function AdminPositionsPage() {
     setLoading(true);
     const [posRes, pilotsRes] = await Promise.all([
       supabase.from('positions').select('*').order('order_num, name'),
-      supabase.from('users').select('id, name, position').order('name'),
+      supabase.from('users').select('id, name, position, position_id').order('name'),
     ]);
     setPositions(posRes.data || []);
     setPilots(pilotsRes.data || []);
@@ -57,6 +58,13 @@ export default function AdminPositionsPage() {
   };
 
   useEffect(() => { loadData(); }, []);
+
+  // Розгорнути всі посади при завантаженні
+  useEffect(() => {
+    if (positions.length > 0 && expandedIds.size === 0) {
+      setExpandedIds(new Set(positions.map(p => p.name)));
+    }
+  }, [positions]);
 
   // Перевірка чи може позиція бути батьком
   const canBeParent = (parentId, childId) => {
@@ -86,7 +94,7 @@ export default function AdminPositionsPage() {
       .filter(p => p.parent_id === parentId)
       .sort((a, b) => (a.order_num || 0) - (b.order_num || 0))
       .map(pos => {
-        const posPilots = pilots.filter(p => p.position === pos.name);
+        const posPilots = pilots.filter(p => p.position_id === pos.id);
         return {
           ...pos,
           level,
@@ -185,9 +193,9 @@ export default function AdminPositionsPage() {
     if (!window.confirm('Видалити посаду? Всі пілоти будуть переміщені на вищий рівень.')) return;
 
     try {
-      const pilotsInPos = pilots.filter(p => p.position === pos.id);
+      const pilotsInPos = pilots.filter(p => p.position_id === pos.id);
       for (const pilot of pilotsInPos) {
-        await supabase.from('users').update({ position: pos.parent_id }).eq('id', pilot.id);
+        await supabase.from('users').update({ position_id: pos.parent_id }).eq('id', pilot.id);
       }
       const { error } = await supabase.from('positions').delete().eq('id', pos.id);
       if (error) throw error;
@@ -197,11 +205,25 @@ export default function AdminPositionsPage() {
     }
   };
 
+  // Перемкнути право редагування Зведеної таблиці
+  const toggleEditReadiness = async (pos) => {
+    const newValue = !pos.can_edit_readiness;
+    const { error } = await supabase
+      .from('positions')
+      .update({ can_edit_readiness: newValue })
+      .eq('id', pos.id);
+    if (error) {
+      window.alert(error.message);
+    } else {
+      loadData();
+    }
+  };
+
   // Створити код
   const createCode = async (positionId) => {
     try {
       const { data, error } = await supabase.rpc('fn_create_position_invite', {
-        p_position: positionId,
+        p_position_id: positionId,
         p_created_by: auth?.userId,
       });
       if (error) throw error;
@@ -224,7 +246,7 @@ export default function AdminPositionsPage() {
 
   // Завантажити коди
   const loadCodes = async (positionId) => {
-    const { data, error } = await supabase.rpc('fn_get_position_codes', { p_position: positionId });
+    const { data, error } = await supabase.rpc('fn_get_position_codes', { p_position_id: positionId });
     if (!error && data) setCodes(data);
   };
 
@@ -247,7 +269,7 @@ export default function AdminPositionsPage() {
       return;
     }
 
-    const { error } = await supabase.from('users').update({ position: addToPositionId }).eq('id', selectedPersonId);
+    const { error } = await supabase.from('users').update({ position_id: addToPositionId }).eq('id', selectedPersonId);
     if (error) {
       window.alert(error.message);
     } else {
@@ -277,7 +299,7 @@ export default function AdminPositionsPage() {
 
   // Зняти людину з посади
   const removeFromPosition = async (positionId, personId) => {
-    const { error } = await supabase.from('users').update({ position: null }).eq('id', personId);
+    const { error } = await supabase.from('users').update({ position_id: null }).eq('id', personId);
     if (error) {
       window.alert(error.message);
     } else {
@@ -333,8 +355,16 @@ export default function AdminPositionsPage() {
           </div>
 
           <div className={s.unitActions} onClick={e => e.stopPropagation()}>
+            <button
+              className={s.unitBtn}
+              onClick={() => toggleEditReadiness(pos)}
+              title={pos.can_edit_readiness ? 'Може редагувати Зведену таблицю (натисніть щоб вимкнути)' : 'Не може редагувати (натисніть щоб дозволити)'}
+              style={pos.can_edit_readiness ? { color: '#2563EB', background: '#EFF6FF' } : {}}
+            >
+              {pos.can_edit_readiness ? <IoCheckboxOutline size={20} /> : <IoSquareOutline size={20} />}
+            </button>
             <button className={s.unitBtn} onClick={() => {
-              setAddToPositionId(pos.name);
+              setAddToPositionId(pos.id);
               setSelectedPersonId(null);
               setShowAddToPositionModal(true);
             }} title="Додати до посади"><IoPersonAddOutline size={20} /></button>
@@ -415,7 +445,7 @@ export default function AdminPositionsPage() {
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', fontSize: 12, color: '#6B7280' }}>
         <IoInformationCircleOutline size={14} />
-        <span>Клікніть правою кнопкою щоб перемістити посаду</span>
+        <span>☑ = редагування Зведеної таблиці | Права кнопка — перемістити посаду</span>
       </div>
 
       {loading && <div className={s.loadingWrap}><div className={s.spinner} style={{ borderTopColor: '#111827', width: 24, height: 24 }} /></div>}

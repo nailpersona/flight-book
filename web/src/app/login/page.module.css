@@ -122,3 +122,146 @@
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+
+/* Mode switch tabs */
+.modeSwitch {
+  display: flex;
+  flex-direction: row;
+  background: #F3F4F6;
+  border-radius: 10px;
+  padding: 4px;
+  margin-bottom: 16px;
+}
+.modeBtn {
+  flex: 1;
+  padding: 10px;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 400;
+  color: #6B7280;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.modeBtn:hover {
+  color: #374151;
+}
+.modeBtnActive {
+  background: #FFFFFF;
+  color: #111827;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+/* Role selector */
+.roleSelect {
+  min-height: 44px;
+  border-radius: 12px;
+  padding: 0 14px;
+  background: #F9FAFB;
+  border: 1px solid #E5E7EB;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+}
+.roleSelect:hover {
+  border-color: #D1D5DB;
+}
+.roleSelectText {
+  font-size: 15px;
+  font-weight: 400;
+  color: #111827;
+  flex: 1;
+}
+.roleSelectPlaceholder {
+  color: #9CA3AF;
+}
+
+/* Modal */
+.modalBackdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0,0,0,0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+}
+.modalCard {
+  background: #FFFFFF;
+  border-radius: 16px;
+  padding: 20px;
+  width: 100%;
+  max-width: 320px;
+  box-shadow: 0 8px 16px rgba(0,0,0,0.2);
+}
+.modalTitle {
+  font-size: 16px;
+  font-weight: 400;
+  color: #111827;
+  margin-bottom: 12px;
+}
+.roleList {
+  display: flex;
+  flex-direction: column;
+}
+.optionRow {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 8px;
+  border-bottom: 1px solid #F3F4F6;
+  background: transparent;
+  border-left: none;
+  border-right: none;
+  border-top: none;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+}
+.optionRow:last-child {
+  border-bottom: none;
+}
+.optionRow:hover {
+  background: #F9FAFB;
+}
+.optionRowSelected {
+  background: #F3F4F6;
+}
+.optionText {
+  font-size: 15px;
+  font-weight: 400;
+  color: #111827;
+}
+.optionTextSelected {
+  color: #111827;
+}
+.selectedMark {
+  color: #10B981;
+  font-size: 14px;
+  font-weight: 400;
+  margin-left: 8px;
+}
+.modalCloseBtn {
+  margin-top: 12px;
+  padding: 12px;
+  width: 100%;
+  background: #F3F4F6;
+  border: none;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 400;
+  color: #6B7280;
+  cursor: pointer;
+}
+.modalCloseBtn:hover {
+  background: #E5E7EB;
+}

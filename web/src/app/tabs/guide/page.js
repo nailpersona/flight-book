@@ -1,8 +1,9 @@
 'use client';
 import { useEffect, useState, useRef } from 'react';
-import { IoChevronBackOutline, IoChevronForwardOutline, IoDocumentTextOutline, IoChevronDownOutline, IoAirplane, IoSearchOutline, IoCloseOutline } from 'react-icons/io5';
+import { IoChevronBackOutline, IoChevronForwardOutline, IoDocumentTextOutline, IoChevronDownOutline, IoAirplane, IoSearchOutline, IoCloseOutline, IoTimeOutline } from 'react-icons/io5';
 import { supabase } from '../../../lib/supabase';
 import s from '../../../components/shared.module.css';
+import TimeCalculator from '../../../components/TimeCalculator';
 
 export default function GuidePage() {
   const [view, setView] = useState('documents'); // documents | sections | content | in_development
@@ -14,6 +15,9 @@ export default function GuidePage() {
   const [selectedSection, setSelectedSection] = useState(null);
   const [loading, setLoading] = useState(true);
   const [breadcrumb, setBreadcrumb] = useState([]);
+
+  // Time calculator state
+  const [showCalculator, setShowCalculator] = useState(false);
 
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
@@ -385,10 +389,10 @@ export default function GuidePage() {
   };
 
   const getHeaderText = () => {
-    if (view === 'documents') return 'Керівні документи';
-    if (view === 'sections' || view === 'in_development') return selectedDoc?.title_short || 'Керівні документи';
+    if (view === 'documents') return '';
+    if (view === 'sections' || view === 'in_development') return selectedDoc?.title_short || '';
     if (view === 'content') return selectedSection?.title || 'Зміст';
-    return 'Керівні документи';
+    return '';
   };
 
   // Handle internal section links
@@ -647,16 +651,42 @@ export default function GuidePage() {
         </div>
       ) : view === 'documents' ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {/* Time calculator button */}
+          <div style={{ display: 'flex', justifyContent: 'center' }}>
+            <button
+              onClick={() => setShowCalculator(true)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 10,
+                background: '#D9DBDE',
+                borderRadius: 12,
+                border: '1px solid #B0B3B8',
+                padding: '12px 14px',
+                cursor: 'pointer',
+                width: '80%',
+                color: '#555860',
+                fontSize: 15,
+                fontWeight: 400,
+              }}
+            >
+              <IoTimeOutline size={18} color="#555860" />
+              Авіаційний калькулятор
+            </button>
+          </div>
+
           {/* Search input */}
           <div className="search-container" style={{ position: 'relative' }}>
             <div style={{
               display: 'flex',
               alignItems: 'center',
-              background: '#FFFFFF',
-              borderRadius: 12,
-              border: '1px solid #E5E7EB',
-              padding: '10px 14px',
-              gap: 10,
+              background: 'linear-gradient(135deg, #FFFFFF 0%, #F8FAFC 100%)',
+              borderRadius: 16,
+              border: '1px solid rgba(0, 0, 0, 0.06)',
+              padding: '12px 16px',
+              gap: 12,
+              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.8)',
             }}>
               <IoSearchOutline size={20} color="#9CA3AF" />
               <input
@@ -670,7 +700,7 @@ export default function GuidePage() {
                   flex: 1,
                   border: 'none',
                   outline: 'none',
-                  fontSize: 14,
+                  fontSize: 15,
                   fontWeight: 400,
                   color: '#111827',
                   background: 'transparent',
@@ -681,14 +711,15 @@ export default function GuidePage() {
                   onClick={clearSearch}
                   style={{
                     border: 'none',
-                    background: 'none',
-                    padding: 0,
+                    background: 'rgba(0, 0, 0, 0.05)',
+                    padding: 4,
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
+                    borderRadius: 8,
                   }}
                 >
-                  <IoCloseOutline size={20} color="#9CA3AF" />
+                  <IoCloseOutline size={18} color="#6B7280" />
                 </button>
               )}
             </div>
@@ -701,16 +732,16 @@ export default function GuidePage() {
                 left: 0,
                 right: 0,
                 background: '#FFFFFF',
-                borderRadius: 12,
-                border: '1px solid #E5E7EB',
-                marginTop: 6,
+                borderRadius: 16,
+                border: '1px solid rgba(0, 0, 0, 0.06)',
+                marginTop: 8,
                 maxHeight: 400,
                 overflowY: 'auto',
-                boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                boxShadow: '0 8px 32px rgba(0, 0, 0, 0.12)',
                 zIndex: 100,
               }}>
                 {isSearching ? (
-                  <div style={{ padding: 16, textAlign: 'center', color: '#6B7280', fontSize: 14, fontWeight: 400 }}>
+                  <div style={{ padding: 20, textAlign: 'center', color: '#6B7280', fontSize: 14, fontWeight: 400 }}>
                     Пошук...
                   </div>
                 ) : searchResults.length > 0 ? (
@@ -719,7 +750,7 @@ export default function GuidePage() {
                       key={result.id}
                       onClick={() => handleSearchResultClick(result)}
                       style={{
-                        padding: '12px 14px',
+                        padding: '14px 16px',
                         borderBottom: '1px solid #F3F4F6',
                         cursor: 'pointer',
                         transition: 'background 0.2s',
@@ -728,15 +759,17 @@ export default function GuidePage() {
                       onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                     >
                       <div style={{
-                        fontSize: 13,
+                        fontSize: 12,
                         fontWeight: 400,
                         color: '#6366F1',
                         marginBottom: 4,
+                        textTransform: 'uppercase',
+                        letterSpacing: 0.5,
                       }}>
                         {result.documentTitle}
                       </div>
                       <div style={{
-                        fontSize: 14,
+                        fontSize: 15,
                         fontWeight: 400,
                         color: '#111827',
                         marginBottom: 4,
@@ -756,7 +789,7 @@ export default function GuidePage() {
                     </div>
                   ))
                 ) : searchQuery.trim().length >= 2 ? (
-                  <div style={{ padding: 16, textAlign: 'center', color: '#6B7280', fontSize: 14, fontWeight: 400 }}>
+                  <div style={{ padding: 20, textAlign: 'center', color: '#6B7280', fontSize: 14, fontWeight: 400 }}>
                     Нічого не знайдено
                   </div>
                 ) : null}
@@ -825,6 +858,12 @@ export default function GuidePage() {
           </div>
         </div>
       )}
+
+      {/* Time Calculator */}
+      <TimeCalculator
+        isOpen={showCalculator}
+        onClose={() => setShowCalculator(false)}
+      />
     </div>
   );
 }

@@ -1,7 +1,7 @@
 'use client';
 import React, { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { IoChevronBack, IoPrintOutline, IoBarChart, IoClose } from 'react-icons/io5';
+import { IoChevronBack, IoPrintOutline, IoBarChart, IoClose, IoWater } from 'react-icons/io5';
 import { useAuth } from '../../../lib/auth';
 import {
   getAllPilotsReadinessData,
@@ -36,6 +36,17 @@ const LP_BREAK_TYPES_LIST = [
   'Зовнішня підвіска/евак.',
 ];
 
+// Positions for ДНДІ group (in order)
+const DNDI_POSITIONS = [
+  'Заступник командира в/ч А3444 з ЛП',
+  'Начальник СБП в/ч А3444',
+  'Начальник ЛМВ в/ч А3444',
+  'Головний штурман в/ч А3444',
+];
+
+// Check if position belongs to ДНДІ group
+const isDndiPosition = (position) => DNDI_POSITIONS.includes(position);
+
 // Mappings for database types
 const ANNUAL_DB_MAP = {
   'Техніка пілотування': 'ТП',
@@ -67,6 +78,33 @@ const LP_BREAK_DB_MAP = {
   'Зовнішня підвіска/евак.': 'зовнішня_підвіска',
 };
 
+// Which KBP each LP type belongs to (null = common to all)
+const LP_TYPE_KBP_MAP = {
+  'мала_висота': null,           // Common (КБП ВА + КБПВ)
+  'складний_пілотаж': 'КБП ВА',  // КБП ВА only
+  'пб_ударні': 'КБП ВА',         // КБП ВА only
+  'пб_винищувачі': 'КБП ВА',     // КБП ВА only
+  'гмв_онб': 'КБПВ',             // КБПВ only
+  'групова_злітаність': null,    // Common
+  'бойове_застосування': 'КБПВ', // КБПВ only
+  'бз_нц_прості': 'КБПВ',        // КБПВ only
+  'бз_нц_складні': 'КБПВ',       // КБПВ only
+  'пб_нешвидкісні': 'КБП ВА',    // КБП ВА only
+  'десантування': 'КБПВ',        // КБПВ only
+  'продовжений_зліт': 'КБПВ',    // КБПВ only
+  'пошуково_рятувальні': 'КБПВ', // КБПВ only
+  'зовнішня_підвіска': 'КБПВ',   // КБПВ only
+};
+
+// Check if LP type is compatible with pilot's KBP
+const isLpTypeCompatible = (lpTypeLabel, primaryKbp) => {
+  const normalized = LP_BREAK_DB_MAP[lpTypeLabel];
+  const requiredKbp = LP_TYPE_KBP_MAP[normalized];
+  // null means common to all, otherwise must match
+  if (requiredKbp === null) return true;
+  return primaryKbp === requiredKbp;
+};
+
 // Status colors (soft pastel)
 const STATUS = {
   green: { bg: '#E8F5E9', text: '#2E7D32' },
@@ -86,14 +124,12 @@ export default function ReadinessPage() {
   const [editDate, setEditDate] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const isAdmin = auth?.role === 'admin';
+  const canEdit = auth?.role === 'admin' || auth?.canEditReadiness === true;
 
   const load = useCallback(async () => {
     if (!auth) return;
     setLoading(true);
-    console.log('Loading readiness data...');
     const result = await getAllPilotsReadinessData();
-    console.log('Load result:', result.ok, result.data?.pilots?.length, 'pilots');
     if (result.ok) {
       setData(result.data);
     }
@@ -158,8 +194,6 @@ export default function ReadinessPage() {
     let result;
     const { pilotId, aircraftTypeId, category, categoryType } = editModal;
 
-    console.log('handleClearDate:', { pilotId, aircraftTypeId, category, categoryType });
-
     switch (categoryType) {
       case 'mu':
         result = await deleteMuBreakDateById(pilotId, category, aircraftTypeId);
@@ -176,8 +210,6 @@ export default function ReadinessPage() {
       default:
         result = { ok: false, error: 'Невідомий тип категорії' };
     }
-
-    console.log('delete result:', result);
 
     if (result.ok) {
       await load();
@@ -212,26 +244,22 @@ export default function ReadinessPage() {
           <IoChevronBack size={20} />
         </button>
         <div className={s.titleBlock}>
-          <div className={s.title}>Стан бойової готовності</div>
+          <div className={s.title}>Зведена таблиця льотної підготовки</div>
         </div>
         <div className={s.actions}>
           <button className={s.actionBtn} onClick={() => router.push('/tabs/summary-all')}>
             <IoBarChart size={16} />
             Підсумки
           </button>
+          <button className={s.actionBtn} onClick={() => router.push('/tabs/fuel')}>
+            <IoWater size={16} />
+            Паливо
+          </button>
           <button className={s.actionBtn} onClick={handlePrint}>
             <IoPrintOutline size={16} />
             Друк
           </button>
         </div>
-      </div>
-
-      {/* Summary cards */}
-      <div className={s.summaryRow}>
-        <SummaryCard value={data.summary.total} label="Всього пілотів" variant="total" />
-        <SummaryCard value={data.summary.green} label="Готові" variant="green" />
-        <SummaryCard value={data.summary.yellow} label="Попередження" variant="yellow" />
-        <SummaryCard value={data.summary.red} label="Не готові" variant="red" />
       </div>
 
       {/* Pilots table (Excel style with date cells) */}
@@ -258,15 +286,63 @@ export default function ReadinessPage() {
           </tr>
         </thead>
         <tbody className={s.tableBody}>
-          {data.pilots.map((pilot, pilotIdx) => {
-            const rowNum = pilotIdx + 1;
-            const aircraftCount = pilot.aircraft.length || 1;
-            const pilotRowSpan = aircraftCount;
+          {(() => {
+            let dndiHeaderShown = false;
+            let lvkHeaderShown = false;
+
+            // Sort pilots: ДНДІ positions first (in order), then others
+            const sortedPilots = [...data.pilots].sort((a, b) => {
+              const aIndex = DNDI_POSITIONS.indexOf(a.position);
+              const bIndex = DNDI_POSITIONS.indexOf(b.position);
+              const aIsDndi = aIndex !== -1;
+              const bIsDndi = bIndex !== -1;
+
+              if (aIsDndi && bIsDndi) return aIndex - bIndex; // Both ДНДІ - sort by order
+              if (aIsDndi) return -1; // a is ДНДІ, comes first
+              if (bIsDndi) return 1;  // b is ДНДІ, comes first
+              return 0; // Neither is ДНДІ - keep original order
+            });
+
+            return sortedPilots.map((pilot, pilotIdx) => {
+              const isDndi = isDndiPosition(pilot.position);
+
+              // Determine which headers to show
+              const showDndiHeader = isDndi && !dndiHeaderShown;
+              const showLvKHeader = !isDndi && !lvkHeaderShown;
+
+              if (showDndiHeader) dndiHeaderShown = true;
+              if (showLvKHeader) lvkHeaderShown = true;
+
+              const rowNum = pilotIdx + 1;
+              const aircraftCount = pilot.aircraft.length || 1;
+              const pilotRowSpan = aircraftCount;
+
+              // Section header rows
+              const sectionHeaderRows = (showDndiHeader || showLvKHeader) ? (
+                <>
+                  {showDndiHeader && (
+                    <tr key="section-dndi" className={s.sectionHeaderRow}>
+                      <td colSpan={4 + 6 + 6 + 8 + 14} className={s.sectionHeaderCell}>
+                        ДЕРЖАВНИЙ НАУКОВО-ДОСЛІДНИЙ ІНСТИТУТ ВИПРОБУВАНЬ І СЕРТИФІКАЦІЇ ОЗБРОЄННЯ ТА ВІЙСЬКОВОЇ ТЕХНІКИ
+                      </td>
+                    </tr>
+                  )}
+                  {showLvKHeader && (
+                    <tr key="section-lvk" className={s.sectionHeaderRow}>
+                      <td colSpan={4 + 6 + 6 + 8 + 14} className={s.sectionHeaderCell}>
+                        ЛЬОТНО-ВИПРОБУВАЛЬНИЙ КОМПЛЕКС
+                      </td>
+                    </tr>
+                  )}
+                </>
+              ) : null;
 
             if (pilot.aircraft.length === 0) {
               // Pilot with no aircraft - single empty row
               return (
-                <tr key={pilot.id} className={s.pilotRow}>
+                <React.Fragment key={pilot.id}>
+                  {sectionHeaderRows}
+                  <tr className={s.pilotRow}>
                   <td className={s.tdNum}>{rowNum}</td>
                   <td className={s.tdName}>
                     <div className={s.pilotName}>{pilot.name}</div>
@@ -279,12 +355,14 @@ export default function ReadinessPage() {
                   {ANNUAL_TYPES_LIST.map((t, idx) => <DateCellTd key={t} date="" color="gray" editable={false} groupStart={idx === 0 ? 'Annual' : null} />)}
                   {LP_BREAK_TYPES_LIST.map((t, idx) => <DateCellTd key={t} date="" color="gray" editable={false} groupStart={idx === 0 ? 'LpBreak' : null} />)}
                 </tr>
+                </React.Fragment>
               );
             }
 
             // Pilot with aircraft - first row has pilot info with rowspan
             return (
               <React.Fragment key={pilot.id}>
+                {sectionHeaderRows}
                 {pilot.aircraft.map((ac, acIdx) => (
                   <tr key={`${pilot.id}-${ac.name}`} className={s.aircraftRow}>
                     {/* First aircraft row has pilot info with rowspan */}
@@ -309,9 +387,9 @@ export default function ReadinessPage() {
                           key={muType}
                           date={item?.date}
                           color={item?.color}
-                          editable={isAdmin}
+                          editable={canEdit}
                           groupStart={idx === 0 ? 'Mu' : null}
-                          onClick={() => isAdmin && openEditModal(pilot.id, ac.aircraftTypeId, muType, 'mu', item?.date)}
+                          onClick={() => canEdit && openEditModal(pilot.id, ac.aircraftTypeId, muType, 'mu', item?.date)}
                         />
                       );
                     })}
@@ -329,9 +407,9 @@ export default function ReadinessPage() {
                             key={commType}
                             date={item?.date}
                             color={item?.color}
-                            editable={isAdmin}
+                            editable={canEdit}
                             groupStart={idx === 0 ? 'Comm' : null}
-                            onClick={() => isAdmin && openEditModal(pilot.id, ac.aircraftTypeId, commType, 'comm', item?.date)}
+                            onClick={() => canEdit && openEditModal(pilot.id, ac.aircraftTypeId, commType, 'comm', item?.date)}
                           />
                         );
                       } else {
@@ -350,10 +428,10 @@ export default function ReadinessPage() {
                             key={commType}
                             date={mergedItem?.date}
                             color={mergedItem?.color}
-                            editable={isAdmin}
+                            editable={canEdit}
                             groupStart={idx === 0 ? 'Comm' : null}
                             rowSpan={pilotRowSpan}
-                            onClick={() => isAdmin && openEditModal(pilot.id, null, commType, 'comm', mergedItem?.date)}
+                            onClick={() => canEdit && openEditModal(pilot.id, null, commType, 'comm', mergedItem?.date)}
                           />
                         );
                       }
@@ -375,10 +453,10 @@ export default function ReadinessPage() {
                           key={annType}
                           date={mergedItem?.date}
                           color={mergedItem?.color}
-                          editable={isAdmin}
+                          editable={canEdit}
                           groupStart={idx === 0 ? 'Annual' : null}
                           rowSpan={pilotRowSpan}
-                          onClick={() => isAdmin && openEditModal(pilot.id, null, annType, 'annual', mergedItem?.date)}
+                          onClick={() => canEdit && openEditModal(pilot.id, null, annType, 'annual', mergedItem?.date)}
                         />
                       );
                     })}
@@ -386,14 +464,16 @@ export default function ReadinessPage() {
                     {/* LP Break dates */}
                     {LP_BREAK_TYPES_LIST.map((lpBreakType, idx) => {
                       const item = ac.lpBreak?.[lpBreakType];
+                      const lpCompatible = isLpTypeCompatible(lpBreakType, ac.primaryKbp);
+                      const lpCanEdit = canEdit && lpCompatible;
                       return (
                         <DateCellTd
                           key={lpBreakType}
                           date={item?.date}
                           color={item?.color}
-                          editable={isAdmin}
+                          editable={lpCanEdit}
                           groupStart={idx === 0 ? 'LpBreak' : null}
-                          onClick={() => isAdmin && openEditModal(pilot.id, ac.aircraftTypeId, lpBreakType, 'lpBreak', item?.date)}
+                          onClick={() => lpCanEdit && openEditModal(pilot.id, ac.aircraftTypeId, lpBreakType, 'lpBreak', item?.date)}
                         />
                       );
                     })}
@@ -401,9 +481,10 @@ export default function ReadinessPage() {
                 ))}
               </React.Fragment>
             );
-          })}
-        </tbody>
-      </table>
+          });
+        })()}
+      </tbody>
+    </table>
 
       {/* Edit Modal */}
       {editModal && (
@@ -453,18 +534,6 @@ export default function ReadinessPage() {
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-function SummaryCard({ value, label, variant }) {
-  const variantClass = variant === 'total' ? s.summaryTotal :
-                      variant === 'green' ? s.summaryGreen :
-                      variant === 'yellow' ? s.summaryYellow : s.summaryRed;
-  return (
-    <div className={`${s.summaryCard} ${variantClass}`}>
-      <div className={s.summaryValue}>{value}</div>
-      <div className={s.summaryLabel}>{label}</div>
     </div>
   );
 }

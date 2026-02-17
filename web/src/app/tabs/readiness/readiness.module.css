@@ -633,3 +633,19 @@
     display: none !important;
   }
 }
+
+/* Section header row */
+.sectionHeaderRow {
+  background: #374151;
+}
+.sectionHeaderCell {
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 400;
+  color: #FFFFFF;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  border-left: 1px solid #D1D5DB;
+  border-right: 1px solid #D1D5DB;
+}

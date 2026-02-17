@@ -16,6 +16,13 @@ const PERIODS = [
   { key: 'custom', label: 'Період' },
 ];
 
+const FLIGHT_TYPES_ORDER = [
+  'Тренувальний',
+  'Контрольний',
+  'На випробування',
+  'У складі екіпажу',
+];
+
 function getDateRange(k) {
   const now = new Date();
   const y = now.getFullYear();
@@ -67,6 +74,19 @@ export default function FlightSummaryPage() {
       if (!auth?.pib) return;
       setLoading(true);
 
+      // Get current user's ID to filter flights
+      const { data: userData, error: userErr } = await supabase
+        .from('users')
+        .select('id')
+        .eq('name', auth.pib)
+        .maybeSingle();
+
+      if (userErr || !userData) {
+        setData(null);
+        setLoading(false);
+        return;
+      }
+
       let range;
       if (period === 'custom') {
         if (!customStart || !customEnd) { setData(null); setLoading(false); return; }
@@ -75,70 +95,87 @@ export default function FlightSummaryPage() {
         range = getDateRange(period);
       }
 
-      const isFullYear = period === 'this_year' || period === 'last_year';
-      const yearStart = new Date(range.start.getFullYear(), 0, 1);
-      const fetchStart = isFullYear ? range.start : yearStart;
+      const pStart = toISO(range.start);
+      const pEnd = toISO(range.end);
 
       const { data: flights, error } = await supabase
         .from('flights')
-        .select('date, aircraft_type_id, flight_type, flight_time, flights_count, combat_applications, aircraft_types(name)')
-        .gte('date', toISO(fetchStart))
-        .lte('date', toISO(range.end))
+        .select('date, flight_type, flight_time, flights_count, combat_applications, time_of_day')
+        .eq('user_id', userData.id)
+        .gte('date', pStart)
+        .lte('date', pEnd)
         .order('date');
 
       if (error) throw error;
 
-      const pStart = toISO(range.start);
-      const pEnd = toISO(range.end);
-
-      const byAc = {};
-      const bucket = () => ({ flights: 0, minutes: 0, combat: 0, test: 0, testMin: 0 });
+      // Group by flight_type and day/night
+      const byType = {};
+      const bucket = () => ({ flights: 0, minutes: 0, combat: 0 });
 
       (flights || []).forEach(f => {
-        const ac = f.aircraft_types?.name || '—';
-        if (!byAc[ac]) byAc[ac] = { name: ac, period: bucket(), year: bucket() };
+        const type = f.flight_type || 'Інше';
+        const isNight = f.time_of_day === 'Н';
+        const timeKey = isNight ? 'night' : 'day';
+
+        if (!byType[type]) byType[type] = { day: bucket(), night: bucket() };
+
         const cnt = f.flights_count || 1;
         const min = parseMin(f.flight_time);
         const cmb = f.combat_applications || 0;
-        const isTest = f.flight_type === 'Випробувальний';
-        const inP = f.date >= pStart && f.date <= pEnd;
 
-        byAc[ac].year.flights += cnt;
-        byAc[ac].year.minutes += min;
-        byAc[ac].year.combat += cmb;
-        if (isTest) { byAc[ac].year.test += cnt; byAc[ac].year.testMin += min; }
-
-        if (inP) {
-          byAc[ac].period.flights += cnt;
-          byAc[ac].period.minutes += min;
-          byAc[ac].period.combat += cmb;
-          if (isTest) { byAc[ac].period.test += cnt; byAc[ac].period.testMin += min; }
-        }
+        byType[type][timeKey].flights += cnt;
+        byType[type][timeKey].minutes += min;
+        byType[type][timeKey].combat += cmb;
       });
 
-      const rows = Object.values(byAc).sort((a, b) => b.year.flights - a.year.flights);
-
-      const tot = { period: bucket(), year: bucket() };
-      rows.forEach(r => {
-        for (const k of ['flights', 'minutes', 'combat', 'test', 'testMin']) {
-          tot.period[k] += r.period[k];
-          tot.year[k] += r.year[k];
-        }
+      // Sort by predefined order
+      const sortedTypes = Object.keys(byType).sort((a, b) => {
+        const idxA = FLIGHT_TYPES_ORDER.indexOf(a);
+        const idxB = FLIGHT_TYPES_ORDER.indexOf(b);
+        if (idxA === -1 && idxB === -1) return a.localeCompare(b, 'uk');
+        if (idxA === -1) return 1;
+        if (idxB === -1) return -1;
+        return idxA - idxB;
       });
 
-      // Count distinct flight dates in period (~ flight days/shifts)
+      // Calculate totals
+      const totalDay = bucket();
+      const totalNight = bucket();
+      let hasNight = false;
+      let hasCombat = false;
+
+      sortedTypes.forEach(type => {
+        const t = byType[type];
+        totalDay.flights += t.day.flights;
+        totalDay.minutes += t.day.minutes;
+        totalDay.combat += t.day.combat;
+        totalNight.flights += t.night.flights;
+        totalNight.minutes += t.night.minutes;
+        totalNight.combat += t.night.combat;
+        if (t.night.flights > 0) hasNight = true;
+        if (t.day.combat > 0 || t.night.combat > 0) hasCombat = true;
+      });
+
+      const totalAll = {
+        flights: totalDay.flights + totalNight.flights,
+        minutes: totalDay.minutes + totalNight.minutes,
+        combat: totalDay.combat + totalNight.combat,
+      };
+
+      // Count flight dates
       const flightDates = new Set();
-      (flights || []).forEach(f => {
-        if (f.date >= pStart && f.date <= pEnd) flightDates.add(f.date);
-      });
+      (flights || []).forEach(f => flightDates.add(f.date));
 
       setData({
-        rows, totals: tot,
-        showYear: !isFullYear,
-        year: range.start.getFullYear(),
-        hasCombat: tot.year.combat > 0,
-        hasTest: tot.year.test > 0,
+        byType,
+        sortedTypes,
+        totalDay,
+        totalNight,
+        totalAll,
+        hasNight,
+        hasCombat,
         flightDays: flightDates.size,
+        year: range.start.getFullYear(),
       });
     } catch (e) {
       console.error(e);
@@ -155,7 +192,7 @@ export default function FlightSummaryPage() {
     setCalTarget(null);
   };
 
-  const hasData = data && data.rows.length > 0;
+  const hasData = data && data.sortedTypes.length > 0;
 
   return (
     <div className={s.page}>
@@ -196,98 +233,79 @@ export default function FlightSummaryPage() {
       {hasData && (
         <>
           {/* Hero totals */}
-          <div style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
-            <HeroCard value={data.totals.period.flights} label="польотів" />
-            <HeroCard value={fmtMin(data.totals.period.minutes)} label="наліт" />
-            {data.hasCombat && <HeroCard value={data.totals.period.combat} label="бой.заст" />}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+            <HeroCard value={data.totalAll.flights} label="польотів" />
+            <HeroCard value={fmtMin(data.totalAll.minutes)} label="наліт" />
+            {data.hasCombat && <HeroCard value={data.totalAll.combat} label="бой.заст" />}
           </div>
-
-          {data.showYear && (
-            <div style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
-              <div className={s.statCard} style={{ flex: 1 }}>
-                <div className={s.statValue}>{data.totals.year.flights}</div>
-                <div className={s.statLabel}>пол. з поч. року</div>
-              </div>
-              <div className={s.statCard} style={{ flex: 1 }}>
-                <div className={s.statValue}>{fmtMin(data.totals.year.minutes)}</div>
-                <div className={s.statLabel}>наліт з поч. року</div>
-              </div>
-            </div>
-          )}
 
           {/* Main table */}
           <div className={s.card} style={{ padding: 0 }}>
             <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: data.showYear ? 380 : 240 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 280 }}>
                 <thead>
-                  {data.showYear ? (
-                    <>
-                      <tr>
-                        <th rowSpan={2} style={thName}>Тип ПС</th>
-                        <th colSpan={data.hasCombat ? 3 : 2} style={thGroupP}>В період</th>
-                        <th colSpan={data.hasCombat ? 3 : 2} style={thGroupY}>З поч. {data.year} р.</th>
-                        {data.hasTest && <th colSpan={2} style={thGroupT}>Випроб.</th>}
-                      </tr>
-                      <tr>
-                        <th style={thSubP}>пол.</th>
-                        <th style={thSubP}>наліт</th>
-                        {data.hasCombat && <th style={thSubP}>б.з.</th>}
-                        <th style={thSubY}>пол.</th>
-                        <th style={thSubY}>наліт</th>
-                        {data.hasCombat && <th style={thSubY}>б.з.</th>}
-                        {data.hasTest && <><th style={thSubT}>пол.</th><th style={thSubT}>наліт</th></>}
-                      </tr>
-                    </>
-                  ) : (
-                    <tr>
-                      <th style={thName}>Тип ПС</th>
-                      <th style={thSubP}>пол.</th>
-                      <th style={thSubP}>наліт</th>
-                      {data.hasCombat && <th style={thSubP}>б.з.</th>}
-                      {data.hasTest && <><th style={thSubT}>випр.</th><th style={thSubT}>наліт</th></>}
-                    </tr>
-                  )}
+                  <tr>
+                    <th style={thName}>Вид польотів</th>
+                    <th style={thSub}>Польотів</th>
+                    <th style={thSub}>Наліт</th>
+                    {data.hasCombat && <th style={thSub}>Б.з.</th>}
+                  </tr>
                 </thead>
                 <tbody>
-                  {data.rows.map(row => (
-                    <tr key={row.name}>
-                      <td style={tdName}>{row.name}</td>
-                      <td style={tdP}>{fmtNum(row.period.flights)}</td>
-                      <td style={tdP}>{fmtMin(row.period.minutes)}</td>
-                      {data.hasCombat && <td style={tdP}>{fmtNum(row.period.combat)}</td>}
-                      {data.showYear && (
-                        <>
-                          <td style={tdY}>{fmtNum(row.year.flights)}</td>
-                          <td style={tdY}>{fmtMin(row.year.minutes)}</td>
-                          {data.hasCombat && <td style={tdY}>{fmtNum(row.year.combat)}</td>}
-                        </>
-                      )}
-                      {data.hasTest && (
-                        <>
-                          <td style={tdT}>{fmtNum(data.showYear ? row.year.test : row.period.test)}</td>
-                          <td style={tdT}>{fmtMin(data.showYear ? row.year.testMin : row.period.testMin)}</td>
-                        </>
-                      )}
-                    </tr>
-                  ))}
-                  <tr>
-                    <td style={totName}>Всього</td>
-                    <td style={totP}>{data.totals.period.flights}</td>
-                    <td style={totP}>{fmtMin(data.totals.period.minutes)}</td>
-                    {data.hasCombat && <td style={totP}>{data.totals.period.combat}</td>}
-                    {data.showYear && (
-                      <>
-                        <td style={totY}>{data.totals.year.flights}</td>
-                        <td style={totY}>{fmtMin(data.totals.year.minutes)}</td>
-                        {data.hasCombat && <td style={totY}>{data.totals.year.combat}</td>}
-                      </>
-                    )}
-                    {data.hasTest && (
-                      <>
-                        <td style={totT}>{data.showYear ? data.totals.year.test : data.totals.period.test}</td>
-                        <td style={totT}>{fmtMin(data.showYear ? data.totals.year.testMin : data.totals.period.testMin)}</td>
-                      </>
-                    )}
+                  {/* Day flights */}
+                  {data.sortedTypes.map(type => {
+                    const t = data.byType[type];
+                    if (t.day.flights === 0) return null;
+                    return (
+                      <tr key={`${type}-day`}>
+                        <td style={tdName}>{type}</td>
+                        <td style={tdVal}>{t.day.flights}</td>
+                        <td style={tdVal}>{fmtMin(t.day.minutes)}</td>
+                        {data.hasCombat && <td style={tdVal}>{fmtNum(t.day.combat)}</td>}
+                      </tr>
+                    );
+                  })}
+                  {/* Day total */}
+                  <tr style={{ background: '#F0F9FF' }}>
+                    <td style={totSubName}>Всього День</td>
+                    <td style={totSubVal}>{data.totalDay.flights}</td>
+                    <td style={totSubVal}>{fmtMin(data.totalDay.minutes)}</td>
+                    {data.hasCombat && <td style={totSubVal}>{data.totalDay.combat}</td>}
+                  </tr>
+
+                  {/* Night flights (if any) */}
+                  {data.hasNight && (
+                    <>
+                      <tr><td colSpan={data.hasCombat ? 4 : 3} style={{ height: 12 }}></td></tr>
+                      {data.sortedTypes.map(type => {
+                        const t = data.byType[type];
+                        if (t.night.flights === 0) return null;
+                        return (
+                          <tr key={`${type}-night`}>
+                            <td style={tdName}>{type}</td>
+                            <td style={tdVal}>{t.night.flights}</td>
+                            <td style={tdVal}>{fmtMin(t.night.minutes)}</td>
+                            {data.hasCombat && <td style={tdVal}>{fmtNum(t.night.combat)}</td>}
+                          </tr>
+                        );
+                      })}
+                      {/* Night total */}
+                      <tr style={{ background: '#FEF3C7' }}>
+                        <td style={totSubName}>Всього Ніч</td>
+                        <td style={totSubVal}>{data.totalNight.flights}</td>
+                        <td style={totSubVal}>{fmtMin(data.totalNight.minutes)}</td>
+                        {data.hasCombat && <td style={totSubVal}>{data.totalNight.combat}</td>}
+                      </tr>
+                    </>
+                  )}
+
+                  {/* Grand total */}
+                  <tr><td colSpan={data.hasCombat ? 4 : 3} style={{ height: 8 }}></td></tr>
+                  <tr style={{ background: '#F9FAFB' }}>
+                    <td style={totName}>Всього за період</td>
+                    <td style={totP}>{data.totalAll.flights}</td>
+                    <td style={totP}>{fmtMin(data.totalAll.minutes)}</td>
+                    {data.hasCombat && <td style={totP}>{data.totalAll.combat}</td>}
                   </tr>
                 </tbody>
               </table>
@@ -299,18 +317,9 @@ export default function FlightSummaryPage() {
             <div style={{ fontSize: 13, color: '#6B7280', fontWeight: 400, marginBottom: 10 }}>Виконано за період</div>
             <div style={{ display: 'flex', gap: 16 }}>
               <SummaryItem label="Льотних днів" value={data.flightDays} />
-              <SummaryItem label="Польотів" value={data.totals.period.flights} />
-              <SummaryItem label="Наліт" value={fmtMin(data.totals.period.minutes)} />
+              <SummaryItem label="Польотів" value={data.totalAll.flights} />
+              <SummaryItem label="Наліт" value={fmtMin(data.totalAll.minutes)} />
             </div>
-            {data.hasTest && data.totals.period.test > 0 && (
-              <>
-                <div style={{ fontSize: 13, color: '#6B7280', fontWeight: 400, marginTop: 14, marginBottom: 10 }}>На випробування</div>
-                <div style={{ display: 'flex', gap: 16 }}>
-                  <SummaryItem label="Польотів" value={data.totals.period.test} />
-                  <SummaryItem label="Наліт" value={fmtMin(data.totals.period.testMin)} />
-                </div>
-              </>
-            )}
           </div>
         </>
       )}
@@ -361,23 +370,17 @@ function SummaryItem({ label, value }) {
 const base = { fontWeight: 400, whiteSpace: 'nowrap' };
 
 const thName = { ...base, padding: '12px 12px 8px', textAlign: 'left', fontSize: 12, color: '#6B7280', borderBottom: '1px solid #E5E7EB' };
-
-const thGroupP = { ...base, padding: '10px 4px 2px', textAlign: 'center', fontSize: 11, color: '#111827' };
-const thGroupY = { ...base, padding: '10px 4px 2px', textAlign: 'center', fontSize: 11, color: '#9CA3AF' };
-const thGroupT = { ...base, padding: '10px 4px 2px', textAlign: 'center', fontSize: 11, color: '#78716C' };
-
-const thSubP = { ...base, padding: '2px 6px 10px', textAlign: 'center', fontSize: 11, color: '#6B7280', borderBottom: '1px solid #E5E7EB' };
-const thSubY = { ...base, padding: '2px 6px 10px', textAlign: 'center', fontSize: 11, color: '#9CA3AF', borderBottom: '1px solid #E5E7EB' };
-const thSubT = { ...base, padding: '2px 6px 10px', textAlign: 'center', fontSize: 11, color: '#78716C', borderBottom: '1px solid #E5E7EB' };
+const thSub = { ...base, padding: '2px 6px 10px', textAlign: 'center', fontSize: 11, color: '#6B7280', borderBottom: '1px solid #E5E7EB' };
 
 const tdName = { ...base, padding: '10px 12px', fontSize: 14, color: '#374151', borderBottom: '1px solid #F3F4F6' };
-const tdP = { ...base, padding: '10px 6px', fontSize: 14, color: '#111827', textAlign: 'center', borderBottom: '1px solid #F3F4F6' };
-const tdY = { ...base, padding: '10px 6px', fontSize: 13, color: '#9CA3AF', textAlign: 'center', borderBottom: '1px solid #F3F4F6' };
-const tdT = { ...base, padding: '10px 6px', fontSize: 13, color: '#78716C', textAlign: 'center', borderBottom: '1px solid #F3F4F6' };
+const tdVal = { ...base, padding: '10px 6px', fontSize: 14, color: '#111827', textAlign: 'center', borderBottom: '1px solid #F3F4F6' };
+
+const totSubBg = '#F0F9FF';
+const totSubBorder = '1px solid #BAE6FD';
+const totSubName = { ...base, padding: '10px 12px', fontSize: 13, color: '#0369A1', borderTop: totSubBorder, background: totSubBg };
+const totSubVal = { ...base, padding: '10px 6px', fontSize: 13, color: '#0369A1', textAlign: 'center', borderTop: totSubBorder, background: totSubBg };
 
 const totBg = '#F9FAFB';
 const totBorder = '2px solid #E5E7EB';
 const totName = { ...base, padding: '12px 12px', fontSize: 14, color: '#111827', borderTop: totBorder, background: totBg };
 const totP = { ...base, padding: '12px 6px', fontSize: 14, color: '#111827', textAlign: 'center', borderTop: totBorder, background: totBg };
-const totY = { ...base, padding: '12px 6px', fontSize: 13, color: '#6B7280', textAlign: 'center', borderTop: totBorder, background: totBg };
-const totT = { ...base, padding: '12px 6px', fontSize: 13, color: '#78716C', textAlign: 'center', borderTop: totBorder, background: totBg };

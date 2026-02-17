@@ -7,6 +7,7 @@ import s from '../../../components/shared.module.css';
 const BUTTONS = [
   { icon: IoListOutline, title: 'Мої записи', path: '/tabs/my-records' },
   { icon: IoBarChartOutline, title: 'Підсумки', path: '/tabs/flight-summary' },
+  { icon: IoGridOutline, title: 'Зведена таблиця', path: '/tabs/readiness' },
   { icon: IoTimerOutline, title: 'Перерви за МУ', path: '/tabs/breaks-mu' },
   { icon: IoAirplaneOutline, title: 'Перерви за видами ЛП', path: '/tabs/breaks-lp' },
   { icon: IoDocumentTextOutline, title: 'Таблиця комісування', path: '/tabs/commission' },

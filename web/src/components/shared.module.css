@@ -220,17 +220,234 @@
   align-items: center;
 }
 
+/* Status colors (soft pastel - matching mobile) */
+.statusColors {
+  --green-bg: #E8F5E9;
+  --green-text: #2E7D32;
+  --green-dot: #4CAF50;
+  --yellow-bg: #FFF8E1;
+  --yellow-text: #F57F17;
+  --yellow-dot: #FFC107;
+  --red-bg: #FFEBEE;
+  --red-text: #C62828;
+  --red-dot: #EF5350;
+  --gray-bg: #F3F4F6;
+  --gray-text: #6B7280;
+  --gray-dot: #D1D5DB;
+}
+
 /* Status dots */
 .statusDot {
   display: inline-block;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
+  width: 8px;
+  height: 8px;
+  border-radius: 4px;
+  flex-shrink: 0;
 }
-.green { background: #10B981; }
-.yellow { background: #F59E0B; }
-.red { background: #EF4444; }
-.gray { background: #9CA3AF; }
+.green { background: #4CAF50; }
+.yellow { background: #FFC107; }
+.red { background: #EF5350; }
+.gray { background: #D1D5DB; }
+
+/* Date box with colored background */
+.dateBox {
+  min-width: 90px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 400;
+}
+.dateBoxGreen { background: #E8F5E9; color: #2E7D32; }
+.dateBoxYellow { background: #FFF8E1; color: #F57F17; }
+.dateBoxRed { background: #FFEBEE; color: #C62828; }
+.dateBoxGray { background: #F3F4F6; color: #6B7280; }
+
+/* Breaks page styles - matching mobile */
+.breaksSection {
+  background: #FFFFFF;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
+.breaksSectionHeader {
+  padding: 8px 12px;
+  background: #F9FAFB;
+  border-bottom: 1px solid #F3F4F6;
+}
+
+.breaksSectionTitle {
+  font-size: 14px;
+  font-weight: 400;
+  color: #111827;
+  letter-spacing: 0.5px;
+}
+
+.breaksColumnHeaders {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  gap: 8px;
+}
+
+.breaksColHeaderLeft {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 400;
+  color: #9CA3AF;
+}
+
+.breaksColHeaderCenter {
+  width: 90px;
+  font-size: 12px;
+  font-weight: 400;
+  color: #9CA3AF;
+  text-align: center;
+}
+
+.breaksColHeaderRight {
+  width: 90px;
+  font-size: 12px;
+  font-weight: 400;
+  color: #9CA3AF;
+  text-align: center;
+}
+
+.breaksRow {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid #F3F4F6;
+  gap: 8px;
+}
+
+.breaksRowLast {
+  border-bottom: none;
+}
+
+.breaksRowLeft {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.breaksRowRight {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.breaksAircraftText {
+  font-size: 14px;
+  font-weight: 400;
+  color: #111827;
+}
+
+.breaksCheckName {
+  font-size: 14px;
+  font-weight: 400;
+  color: #111827;
+}
+
+.breaksEmptyText {
+  padding: 12px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 400;
+  color: #9CA3AF;
+  font-style: italic;
+}
+
+/* КЛПВ separator */
+.klpvSeparator {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.klpvSeparatorLine {
+  flex: 1;
+  height: 1px;
+  background: #E5E7EB;
+}
+
+.klpvSeparatorText {
+  font-size: 13px;
+  font-weight: 400;
+  color: #9CA3AF;
+}
+
+/* КЛПВ sub-row */
+.klpvSubRow {
+  display: flex;
+  align-items: center;
+  padding: 4px 12px;
+  border-bottom: 1px solid #F3F4F6;
+  gap: 8px;
+}
+
+.klpvLabelBox {
+  width: 90px;
+  text-align: center;
+}
+
+.klpvLabel {
+  font-size: 11px;
+  font-weight: 400;
+  color: #9CA3AF;
+  font-style: italic;
+}
+
+/* ЛЛК/УМО special section */
+.llkUmoSectionHeader {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  background: #F9FAFB;
+  border-bottom: 1px solid #F3F4F6;
+}
+
+.llkUmoHeaderLabel {
+  width: 90px;
+  font-size: 14px;
+  font-weight: 400;
+  color: #111827;
+  text-align: center;
+  letter-spacing: 0.5px;
+}
+
+.llkUmoLabelGroup {
+  display: flex;
+  align-items: center;
+}
+
+.llkUmoRow {
+  display: flex;
+  align-items: center;
+  padding: 6px 12px;
+}
+
+.llkUmoDates {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.llkUmoDateItem {
+  display: flex;
+  align-items: center;
+}
+
+.nextDueText {
+  font-size: 13px;
+  font-weight: 400;
+  color: #6B7280;
+  text-align: center;
+  padding: 8px 12px;
+}
 
 /* Table styles */
 .table {

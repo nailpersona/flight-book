@@ -42,6 +42,15 @@ function FuelPopup({ fuel, onSave }) {
   const [open, setOpen] = useState(false);
   const [airfield, setAirfield] = useState(fuel?.airfield || '');
   const [amount, setAmount] = useState(fuel?.amount || '');
+  const [airfields, setAirfields] = useState([]);
+
+  useEffect(() => {
+    if (open) {
+      supabase.from('airfields').select('code, name').order('code').then(({ data }) => {
+        if (data) setAirfields(data);
+      });
+    }
+  }, [open]);
 
   return (
     <div className={s.mb}>
@@ -53,6 +62,11 @@ function FuelPopup({ fuel, onSave }) {
       </div>
       <Modal visible={open} onClose={() => setOpen(false)} title="Паливо">
         <div className={s.label}>Аеродром</div>
+        <select className={s.select} value={airfields.some(a => `${a.code} (${a.name})` === airfield) ? airfield : ''} onChange={e => { if (e.target.value) setAirfield(e.target.value); }} style={{marginBottom:8}}>
+          <option value="">Оберіть аеродром</option>
+          {airfields.map(a => <option key={a.code} value={`${a.code} (${a.name})`}>{a.code} ({a.name})</option>)}
+        </select>
+        <div className={s.label} style={{marginTop:4}}>Або введіть вручну:</div>
         <input className={s.input} placeholder="Назва аеродрому" value={airfield} onChange={e => setAirfield(e.target.value)} style={{marginBottom:12}} />
         <div className={s.label}>Кількість (кг)</div>
         <input className={s.input} placeholder="0" value={amount} onChange={e => setAmount(e.target.value)} type="number" style={{marginBottom:12}} />
