@@ -135,6 +135,13 @@
   white-space: nowrap;
   font-size: 13px;
 }
+.matrixTable {
+  width: 100%;
+  border-collapse: collapse;
+  white-space: nowrap;
+  font-size: 13px;
+  min-width: 600px;
+}
 
 /* Headers */
 .thName {

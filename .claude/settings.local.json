@@ -59,7 +59,18 @@
       "Bash(npx supabase functions deploy:*)",
       "Bash(npx supabase link:*)",
       "Bash(type section_iii_chapter_*.sql section_iv_chapter_*.sql)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(ping:*)",
+      "Bash(find:*)",
+      "Bash(NEXT_PUBLIC_SUPABASE_URL=\"https://klqxadvtvxvizgdjmegx.supabase.co\" NEXT_PUBLIC_SUPABASE_ANON_KEY=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtscXhhZHZ0dnh2aXpnZGptZWd4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA2MzI3ODEsImV4cCI6MjA4NjIwODc4MX0.ev6yogjEETj3X49_KSBjt9FIxloQsB8kDbpjutUioQ8\" node scripts/generate-table-images.js)",
+      "mcp__supabase__list_organizations",
+      "Bash(vercel:*)",
+      "Bash(npm i:*)",
+      "Bash(python3:*)",
+      "Bash(npx postcss:*)",
+      "Bash(npx playwright install:*)",
+      "Bash(git push:*)",
+      "mcp__supabase__get_publishable_keys"
     ]
   }
 }

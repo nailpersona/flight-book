@@ -118,17 +118,26 @@ Deno.serve(async (req: Request) => {
       `);
 
     if (lpBreaks) {
+      // Отримати періоди та повні назви з break_periods_lp
       const { data: lpPeriods } = await supabase
         .from('break_periods_lp')
-        .select('lp_type_normalized, military_class, months');
+        .select('lp_type, lp_type_normalized, military_class, months');
 
+      // Мапінг: normalized -> months by class
       const lpPeriodMap = new Map<string, Map<number, number>>();
+      // Мапінг: normalized -> повна назва
+      const lpNameMap = new Map<string, string>();
+
       lpPeriods?.forEach(p => {
         const key = p.lp_type_normalized;
         if (!lpPeriodMap.has(key)) {
           lpPeriodMap.set(key, new Map());
         }
         lpPeriodMap.get(key)!.set(p.military_class || 3, p.months);
+        // Зберегти повну назву (беремо першу знайдену для цього normalized)
+        if (!lpNameMap.has(key) && p.lp_type) {
+          lpNameMap.set(key, p.lp_type);
+        }
       });
 
       const { data: users } = await supabase
@@ -152,6 +161,8 @@ Deno.serve(async (req: Request) => {
 
         const daysLeft = Math.ceil((expiryDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 
+        // Отримати повну назву з мапінгу, або залишити як є
+        const lpDisplayName = lpNameMap.get(lp.lp_type) || lp.lp_type;
         const aircraftName = (lp.aircraft_types as any)?.name || '';
 
         if (daysLeft <= 0) {
@@ -159,7 +170,7 @@ Deno.serve(async (req: Request) => {
             user_id: lp.user_id,
             type: 'lp_expired',
             title: `Термін ЛП закінчився`,
-            body: `${lp.lp_type}${aircraftName ? ` (${aircraftName})` : ''} - термін закінчився ${expiryDate.toLocaleDateString('uk-UA')}`,
+            body: `${lpDisplayName}${aircraftName ? ` (${aircraftName})` : ''} - термін закінчився ${expiryDate.toLocaleDateString('uk-UA')}`,
             deadline_date: expiryDate.toISOString().split('T')[0],
             days_left: daysLeft,
             metadata: { lp_type: lp.lp_type, aircraft_type_id: lp.aircraft_type_id }
@@ -169,7 +180,7 @@ Deno.serve(async (req: Request) => {
             user_id: lp.user_id,
             type: 'lp_warning',
             title: `Термін ЛП закінчується`,
-            body: `${lp.lp_type}${aircraftName ? ` (${aircraftName})` : ''} - залишилось ${daysLeft} дн. (до ${expiryDate.toLocaleDateString('uk-UA')})`,
+            body: `${lpDisplayName}${aircraftName ? ` (${aircraftName})` : ''} - залишилось ${daysLeft} дн. (до ${expiryDate.toLocaleDateString('uk-UA')})`,
             deadline_date: expiryDate.toISOString().split('T')[0],
             days_left: daysLeft,
             metadata: { lp_type: lp.lp_type, aircraft_type_id: lp.aircraft_type_id }

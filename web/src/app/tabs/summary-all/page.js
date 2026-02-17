@@ -1,7 +1,7 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { IoChevronBack, IoPrintOutline, IoChevronDown, IoCalendarOutline } from 'react-icons/io5';
+import { IoChevronBack, IoPrintOutline, IoChevronDown, IoCalendarOutline, IoAirplaneOutline } from 'react-icons/io5';
 import { useAuth } from '../../../lib/auth';
 import { supabase } from '../../../lib/supabase';
 import Modal from '../../../components/Modal';
@@ -14,6 +14,13 @@ const PERIODS = [
   { key: 'this_year', label: 'Цей рік' },
   { key: 'last_year', label: 'Мин. рік' },
   { key: 'custom', label: 'Період' },
+];
+
+const FLIGHT_TYPES_ORDER = [
+  'Тренувальний',
+  'Контрольний',
+  'На випробування',
+  'У складі екіпажу',
 ];
 
 function getDateRange(k) {
@@ -47,12 +54,15 @@ function fmtMin(t) {
   return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
 }
 
-function fmtNum(n) { return n || '—'; }
+function fmtCell(flights, minutes) {
+  if (!flights) return '—';
+  return `${flights}/${fmtMin(minutes)}`;
+}
 
 export default function SummaryAllPage() {
   const { auth } = useAuth();
   const router = useRouter();
-  const [period, setPeriod] = useState('this_month');
+  const [period, setPeriod] = useState('this_year');
   const [menuOpen, setMenuOpen] = useState(false);
   const [customStart, setCustomStart] = useState(null);
   const [customEnd, setCustomEnd] = useState(null);
@@ -74,69 +84,114 @@ export default function SummaryAllPage() {
         range = getDateRange(period);
       }
 
-      const isFullYear = period === 'this_year' || period === 'last_year';
-      const yearStart = new Date(range.start.getFullYear(), 0, 1);
-      const fetchStart = isFullYear ? range.start : yearStart;
+      const pStart = toISO(range.start);
+      const pEnd = toISO(range.end);
 
       const { data: flights, error } = await supabase
         .from('flights')
-        .select('date, aircraft_type_id, flight_type, flight_time, flights_count, combat_applications, aircraft_types(name), users(name)')
-        .gte('date', toISO(fetchStart))
-        .lte('date', toISO(range.end))
+        .select('date, aircraft_type_id, flight_type, flight_time, flights_count, time_of_day, aircraft_types(name)')
+        .gte('date', pStart)
+        .lte('date', pEnd)
         .order('date');
 
       if (error) throw error;
 
-      const pStart = toISO(range.start);
-      const pEnd = toISO(range.end);
+      // Collect all aircraft types
+      const aircraftSet = new Set();
+      const flightTypesSet = new Set();
 
-      const byAc = {};
-      const bucket = () => ({ flights: 0, minutes: 0, combat: 0, test: 0, testMin: 0 });
+      // Structure: { aircraftType: { flightType: { day: {flights, minutes}, night: {flights, minutes} } } }
+      const byAircraft = {};
 
       (flights || []).forEach(f => {
         const ac = f.aircraft_types?.name || '—';
-        if (!byAc[ac]) byAc[ac] = { name: ac, period: bucket(), year: bucket() };
+        const type = f.flight_type || 'Інше';
+        const isNight = f.time_of_day === 'Н';
+        const timeKey = isNight ? 'night' : 'day';
+
+        aircraftSet.add(ac);
+        flightTypesSet.add(type);
+
+        if (!byAircraft[ac]) byAircraft[ac] = {};
+        if (!byAircraft[ac][type]) byAircraft[ac][type] = { day: { flights: 0, minutes: 0 }, night: { flights: 0, minutes: 0 } };
+
         const cnt = f.flights_count || 1;
         const min = parseMin(f.flight_time);
-        const cmb = f.combat_applications || 0;
-        const isTest = f.flight_type === 'Випробувальний';
-        const inP = f.date >= pStart && f.date <= pEnd;
 
-        byAc[ac].year.flights += cnt;
-        byAc[ac].year.minutes += min;
-        byAc[ac].year.combat += cmb;
-        if (isTest) { byAc[ac].year.test += cnt; byAc[ac].year.testMin += min; }
-
-        if (inP) {
-          byAc[ac].period.flights += cnt;
-          byAc[ac].period.minutes += min;
-          byAc[ac].period.combat += cmb;
-          if (isTest) { byAc[ac].period.test += cnt; byAc[ac].period.testMin += min; }
-        }
+        byAircraft[ac][type][timeKey].flights += cnt;
+        byAircraft[ac][type][timeKey].minutes += min;
       });
 
-      const rows = Object.values(byAc).sort((a, b) => b.year.flights - a.year.flights);
+      // Sort aircraft types
+      const aircraftTypes = Array.from(aircraftSet).sort((a, b) => a.localeCompare(b, 'uk'));
 
-      const tot = { period: bucket(), year: bucket() };
-      rows.forEach(r => {
-        for (const k of ['flights', 'minutes', 'combat', 'test', 'testMin']) {
-          tot.period[k] += r.period[k];
-          tot.year[k] += r.year[k];
-        }
+      // Sort flight types by predefined order
+      const flightTypes = FLIGHT_TYPES_ORDER.filter(t => flightTypesSet.has(t));
+      // Add any unknown types at the end
+      Array.from(flightTypesSet).forEach(t => {
+        if (!FLIGHT_TYPES_ORDER.includes(t)) flightTypes.push(t);
       });
 
+      // Calculate totals per aircraft (column totals)
+      const aircraftTotals = {};
+      aircraftTypes.forEach(ac => {
+        aircraftTotals[ac] = { day: { flights: 0, minutes: 0 }, night: { flights: 0, minutes: 0 } };
+        flightTypes.forEach(type => {
+          if (byAircraft[ac]?.[type]) {
+            aircraftTotals[ac].day.flights += byAircraft[ac][type].day.flights;
+            aircraftTotals[ac].day.minutes += byAircraft[ac][type].day.minutes;
+            aircraftTotals[ac].night.flights += byAircraft[ac][type].night.flights;
+            aircraftTotals[ac].night.minutes += byAircraft[ac][type].night.minutes;
+          }
+        });
+      });
+
+      // Calculate row totals (Загальний column)
+      const rowTotals = {};
+      flightTypes.forEach(type => {
+        rowTotals[type] = { day: { flights: 0, minutes: 0 }, night: { flights: 0, minutes: 0 } };
+        aircraftTypes.forEach(ac => {
+          if (byAircraft[ac]?.[type]) {
+            rowTotals[type].day.flights += byAircraft[ac][type].day.flights;
+            rowTotals[type].day.minutes += byAircraft[ac][type].day.minutes;
+            rowTotals[type].night.flights += byAircraft[ac][type].night.flights;
+            rowTotals[type].night.minutes += byAircraft[ac][type].night.minutes;
+          }
+        });
+      });
+
+      // Calculate grand totals
+      const totalDay = { flights: 0, minutes: 0 };
+      const totalNight = { flights: 0, minutes: 0 };
+      const grandTotal = { flights: 0, minutes: 0 };
+
+      aircraftTypes.forEach(ac => {
+        totalDay.flights += aircraftTotals[ac].day.flights;
+        totalDay.minutes += aircraftTotals[ac].day.minutes;
+        totalNight.flights += aircraftTotals[ac].night.flights;
+        totalNight.minutes += aircraftTotals[ac].night.minutes;
+      });
+      grandTotal.flights = totalDay.flights + totalNight.flights;
+      grandTotal.minutes = totalDay.minutes + totalNight.minutes;
+
+      // Count flight dates
       const flightDates = new Set();
-      (flights || []).forEach(f => {
-        if (f.date >= pStart && f.date <= pEnd) flightDates.add(f.date);
-      });
+      (flights || []).forEach(f => flightDates.add(f.date));
+
+      const hasNight = totalNight.flights > 0;
 
       setData({
-        rows, totals: tot,
-        showYear: !isFullYear,
-        year: range.start.getFullYear(),
-        hasCombat: tot.year.combat > 0,
-        hasTest: tot.year.test > 0,
+        byAircraft,
+        aircraftTypes,
+        flightTypes,
+        aircraftTotals,
+        rowTotals,
+        totalDay,
+        totalNight,
+        grandTotal,
+        hasNight,
         flightDays: flightDates.size,
+        year: range.start.getFullYear(),
       });
     } catch (e) {
       console.error(e);
@@ -158,7 +213,7 @@ export default function SummaryAllPage() {
   const today = new Date();
   const dateStr = `${String(today.getDate()).padStart(2, '0')}.${String(today.getMonth() + 1).padStart(2, '0')}.${today.getFullYear()}`;
 
-  const hasData = data && data.rows.length > 0;
+  const hasData = data && data.aircraftTypes.length > 0;
 
   return (
     <div className={s.container}>
@@ -212,105 +267,109 @@ export default function SummaryAllPage() {
       {hasData && (
         <>
           <div className={s.tableWrap}>
-            <table className={s.table}>
+            <table className={s.matrixTable}>
               <thead>
-                {data.showYear ? (
-                  <>
-                    <tr>
-                      <th rowSpan={2} className={s.thName}>№</th>
-                      <th rowSpan={2} className={s.thName}>Тип ПС</th>
-                      <th colSpan={data.hasCombat ? 3 : 2} className={s.thGroupP}>В період</th>
-                      <th colSpan={data.hasCombat ? 3 : 2} className={s.thGroupY}>З початку {data.year} р.</th>
-                      {data.hasTest && <th colSpan={2} className={s.thGroupT}>Випроб.</th>}
-                    </tr>
-                    <tr>
-                      <th className={s.thSubP}>пол.</th>
-                      <th className={s.thSubP}>наліт</th>
-                      {data.hasCombat && <th className={s.thSubP}>б.з.</th>}
-                      <th className={s.thSubY}>пол.</th>
-                      <th className={s.thSubY}>наліт</th>
-                      {data.hasCombat && <th className={s.thSubY}>б.з.</th>}
-                      {data.hasTest && <><th className={s.thSubT}>пол.</th><th className={s.thSubT}>наліт</th></>}
-                    </tr>
-                  </>
-                ) : (
-                  <tr>
-                    <th className={s.thName}>№</th>
-                    <th className={s.thName}>Тип ПС</th>
-                    <th className={s.thSubP}>пол.</th>
-                    <th className={s.thSubP}>наліт</th>
-                    {data.hasCombat && <th className={s.thSubP}>б.з.</th>}
-                    {data.hasTest && <><th className={s.thSubT}>випр.</th><th className={s.thSubT}>наліт</th></>}
-                  </tr>
-                )}
+                <tr>
+                  <th style={thFirst}>Види польотів</th>
+                  {data.aircraftTypes.map(ac => (
+                    <th key={ac} style={thAc}>{ac}</th>
+                  ))}
+                  <th style={thTotal}>Загальний</th>
+                </tr>
               </thead>
               <tbody>
-                {data.rows.map((row, idx) => (
-                  <tr key={row.name}>
-                    <td className={s.tdNum}>{idx + 1}</td>
-                    <td className={s.tdName}>{row.name}</td>
-                    <td className={s.tdP}>{fmtNum(row.period.flights)}</td>
-                    <td className={s.tdP}>{fmtMin(row.period.minutes)}</td>
-                    {data.hasCombat && <td className={s.tdP}>{fmtNum(row.period.combat)}</td>}
-                    {data.showYear && (
-                      <>
-                        <td className={s.tdY}>{fmtNum(row.year.flights)}</td>
-                        <td className={s.tdY}>{fmtMin(row.year.minutes)}</td>
-                        {data.hasCombat && <td className={s.tdY}>{fmtNum(row.year.combat)}</td>}
-                      </>
-                    )}
-                    {data.hasTest && (
-                      <>
-                        <td className={s.tdT}>{fmtNum(data.showYear ? row.year.test : row.period.test)}</td>
-                        <td className={s.tdT}>{fmtMin(data.showYear ? row.year.testMin : row.period.testMin)}</td>
-                      </>
-                    )}
+                {/* DAY section */}
+                {data.flightTypes.map(type => (
+                  <tr key={`day-${type}`}>
+                    <td style={tdName}>{type}</td>
+                    {data.aircraftTypes.map(ac => {
+                      const cell = data.byAircraft[ac]?.[type]?.day;
+                      return (
+                        <td key={ac} style={tdVal}>
+                          {cell?.flights ? fmtCell(cell.flights, cell.minutes) : '—'}
+                        </td>
+                      );
+                    })}
+                    <td style={tdTotalCol}>
+                      {fmtCell(data.rowTotals[type].day.flights, data.rowTotals[type].day.minutes)}
+                    </td>
                   </tr>
                 ))}
-                <tr className={s.totalRow}>
-                  <td className={s.tdTotalNum}></td>
-                  <td className={s.tdTotalName}>Всього</td>
-                  <td className={s.tdTotalP}>{data.totals.period.flights}</td>
-                  <td className={s.tdTotalP}>{fmtMin(data.totals.period.minutes)}</td>
-                  {data.hasCombat && <td className={s.tdTotalP}>{data.totals.period.combat}</td>}
-                  {data.showYear && (
-                    <>
-                      <td className={s.tdTotalY}>{data.totals.year.flights}</td>
-                      <td className={s.tdTotalY}>{fmtMin(data.totals.year.minutes)}</td>
-                      {data.hasCombat && <td className={s.tdTotalY}>{data.totals.year.combat}</td>}
-                    </>
-                  )}
-                  {data.hasTest && (
-                    <>
-                      <td className={s.tdTotalT}>{data.showYear ? data.totals.year.test : data.totals.period.test}</td>
-                      <td className={s.tdTotalT}>{fmtMin(data.showYear ? data.totals.year.testMin : data.totals.period.testMin)}</td>
-                    </>
-                  )}
+                {/* Day total */}
+                <tr>
+                  <td style={tdSubNameDay}>Всього День</td>
+                  {data.aircraftTypes.map(ac => (
+                    <td key={ac} style={tdSubValDay}>
+                      {fmtCell(data.aircraftTotals[ac].day.flights, data.aircraftTotals[ac].day.minutes)}
+                    </td>
+                  ))}
+                  <td style={tdSubTotalDay}>
+                    {fmtCell(data.totalDay.flights, data.totalDay.minutes)}
+                  </td>
+                </tr>
+
+                {/* NIGHT section (if any) */}
+                {data.hasNight && (
+                  <>
+                    <tr><td colSpan={data.aircraftTypes.length + 2} style={{ height: 16 }}></td></tr>
+                    {data.flightTypes.map(type => (
+                      <tr key={`night-${type}`}>
+                        <td style={tdName}>{type}</td>
+                        {data.aircraftTypes.map(ac => {
+                          const cell = data.byAircraft[ac]?.[type]?.night;
+                          return (
+                            <td key={ac} style={tdVal}>
+                              {cell?.flights ? fmtCell(cell.flights, cell.minutes) : '—'}
+                            </td>
+                          );
+                        })}
+                        <td style={tdTotalCol}>
+                          {fmtCell(data.rowTotals[type].night.flights, data.rowTotals[type].night.minutes)}
+                        </td>
+                      </tr>
+                    ))}
+                    {/* Night total */}
+                    <tr>
+                      <td style={tdSubNameNight}>Всього Ніч</td>
+                      {data.aircraftTypes.map(ac => (
+                        <td key={ac} style={tdSubValNight}>
+                          {fmtCell(data.aircraftTotals[ac].night.flights, data.aircraftTotals[ac].night.minutes)}
+                        </td>
+                      ))}
+                      <td style={tdSubTotalNight}>
+                        {fmtCell(data.totalNight.flights, data.totalNight.minutes)}
+                      </td>
+                    </tr>
+                  </>
+                )}
+
+                {/* Grand total */}
+                <tr><td colSpan={data.aircraftTypes.length + 2} style={{ height: 8 }}></td></tr>
+                <tr>
+                  <td style={tdGrandName}>Всього</td>
+                  {data.aircraftTypes.map(ac => {
+                    const total = data.aircraftTotals[ac].day.flights + data.aircraftTotals[ac].night.flights;
+                    const min = data.aircraftTotals[ac].day.minutes + data.aircraftTotals[ac].night.minutes;
+                    return (
+                      <td key={ac} style={tdGrandVal}>
+                        {fmtCell(total, min)}
+                      </td>
+                    );
+                  })}
+                  <td style={tdGrandTotal}>
+                    {fmtCell(data.grandTotal.flights, data.grandTotal.minutes)}
+                  </td>
                 </tr>
               </tbody>
             </table>
           </div>
 
-          <div className={s.footer}>
-            <div className={s.footerItem}>
-              <span className={s.footerValue}>{data.flightDays}</span>
-              <span className={s.footerLabel}>льотних днів</span>
-            </div>
-            <div className={s.footerItem}>
-              <span className={s.footerValue}>{data.totals.period.flights}</span>
-              <span className={s.footerLabel}>польотів</span>
-            </div>
-            <div className={s.footerItem}>
-              <span className={s.footerValue}>{fmtMin(data.totals.period.minutes)}</span>
-              <span className={s.footerLabel}>наліт</span>
-            </div>
-          </div>
         </>
       )}
 
       {data && !hasData && !loading && (
         <div className={s.empty}>
-          <div className={s.emptyIcon}>✈️</div>
+          <IoAirplaneOutline size={40} color="#9CA3AF" />
           <div className={s.emptyText}>Немає польотів за цей період</div>
         </div>
       )}
@@ -331,3 +390,31 @@ export default function SummaryAllPage() {
     </div>
   );
 }
+
+/* ── Table styles ── */
+const base = { fontWeight: 400, whiteSpace: 'nowrap' };
+
+// Headers - як нижній рядок Всього
+const thFirst = { ...base, padding: '12px 12px', textAlign: 'left', fontSize: 12, color: '#111827', borderBottom: '2px solid #9CA3AF', background: '#D1D5DB' };
+const thAc = { ...base, padding: '12px 8px', textAlign: 'center', fontSize: 12, color: '#111827', borderBottom: '2px solid #9CA3AF', background: '#D1D5DB' };
+const thTotal = { ...base, padding: '12px 10px', textAlign: 'center', fontSize: 12, color: '#111827', borderBottom: '2px solid #9CA3AF', background: '#D1D5DB' };
+
+// Data cells
+const tdName = { ...base, padding: '10px 12px', fontSize: 13, color: '#374151', borderBottom: '1px solid #F3F4F6' };
+const tdVal = { ...base, padding: '10px 8px', fontSize: 13, color: '#111827', textAlign: 'center', borderBottom: '1px solid #F3F4F6' };
+const tdTotalCol = { ...base, padding: '10px 10px', fontSize: 13, color: '#111827', textAlign: 'center', borderBottom: '1px solid #F3F4F6', background: '#FAFAFA' };
+
+// Day subtotal (light gray) - весь рядок однаковий
+const tdSubNameDay = { ...base, padding: '10px 12px', fontSize: 13, color: '#374151', borderTop: '1px solid #D1D5DB', background: '#F3F4F6' };
+const tdSubValDay = { ...base, padding: '10px 8px', fontSize: 13, color: '#374151', textAlign: 'center', borderTop: '1px solid #D1D5DB', background: '#F3F4F6' };
+const tdSubTotalDay = { ...base, padding: '10px 10px', fontSize: 13, color: '#374151', textAlign: 'center', borderTop: '1px solid #D1D5DB', background: '#F3F4F6' };
+
+// Night subtotal (light gray) - весь рядок однаковий
+const tdSubNameNight = { ...base, padding: '10px 12px', fontSize: 13, color: '#374151', borderTop: '1px solid #D1D5DB', background: '#F3F4F6' };
+const tdSubValNight = { ...base, padding: '10px 8px', fontSize: 13, color: '#374151', textAlign: 'center', borderTop: '1px solid #D1D5DB', background: '#F3F4F6' };
+const tdSubTotalNight = { ...base, padding: '10px 10px', fontSize: 13, color: '#374151', textAlign: 'center', borderTop: '1px solid #D1D5DB', background: '#F3F4F6' };
+
+// Grand total (darker gray) - весь рядок однаковий
+const tdGrandName = { ...base, padding: '12px 12px', fontSize: 14, color: '#111827', borderTop: '2px solid #9CA3AF', background: '#D1D5DB' };
+const tdGrandVal = { ...base, padding: '12px 8px', fontSize: 14, color: '#111827', textAlign: 'center', borderTop: '2px solid #9CA3AF', background: '#D1D5DB' };
+const tdGrandTotal = { ...base, padding: '12px 10px', fontSize: 14, color: '#111827', textAlign: 'center', borderTop: '2px solid #9CA3AF', background: '#D1D5DB' };
