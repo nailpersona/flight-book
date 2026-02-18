@@ -31,6 +31,50 @@ function DetailRow({ icon: Icon, label, value }) {
   );
 }
 
+// Функція для форматування ПІБ з званням
+// Примітка: name вже містить звання (наприклад "п/п-к Філенко М.М."), тому rank не додаємо
+function formatNameWithRank(name, rank) {
+  if (!name) return '';
+  return name; // name вже містить звання
+}
+
+// Компонент для відображення екіпажу
+function CrewDisplay({ crew, commanderName }) {
+  // Форматуємо рядки екіпажу
+  const crewLines = [];
+
+  // Командир екіпажу (автор запису)
+  if (commanderName) {
+    crewLines.push({ label: 'Ком. екіпажу', name: commanderName });
+  }
+
+  // Члени екіпажу
+  if (crew && crew.length > 0) {
+    crew.forEach(member => {
+      const memberName = member.users?.name || member.custom_name || '';
+      if (memberName) {
+        crewLines.push({ label: member.role, name: memberName });
+      }
+    });
+  }
+
+  if (crewLines.length === 0) return null;
+
+  // Знаходимо максимальну довжину лейбла для вирівнювання
+  const maxLabelLength = Math.max(...crewLines.map(l => l.label.length));
+
+  return (
+    <div style={{ textAlign: 'right', fontSize: 12 }}>
+      {crewLines.map((line, idx) => (
+        <div key={idx} style={{ display: 'flex', justifyContent: 'flex-end', gap: 4 }}>
+          <span style={{ color: '#9CA3AF' }}>{line.label}:</span>
+          <span style={{ color: '#6B7280' }}>{line.name}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function MyRecordsPage() {
   const { auth } = useAuth();
   const router = useRouter();
@@ -47,7 +91,7 @@ export default function MyRecordsPage() {
       const admin = auth?.role === 'admin';
       setIsAdmin(admin);
 
-      let query = supabase.from('flights').select(`id, date, aircraft_type_id, time_of_day, weather_conditions, flight_type, test_flight_topic, document_source, flight_time, combat_applications, flight_purpose, notes, flights_count, aircraft_types(name), fuel_records(airfield, fuel_amount), users!flights_user_id_fkey(name)`).order('date', { ascending: false });
+      let query = supabase.from('flights').select(`id, date, aircraft_type_id, time_of_day, weather_conditions, flight_type, test_flight_topic, document_source, flight_time, combat_applications, flight_purpose, notes, flights_count, aircraft_types(name), fuel_records(airfield, fuel_amount), users!flights_user_id_fkey(name, rank), flight_crew(id, role, user_id, custom_name, users(name, rank))`).order('date', { ascending: false });
       if (!admin) query = query.eq('user_id', userData.id);
 
       const { data, error } = await query;
@@ -111,7 +155,11 @@ export default function MyRecordsPage() {
                 <span style={{ background: '#6B7280', borderRadius: 6, padding: '4px 10px', color: '#fff', fontSize: 13 }}>{date}</span>
                 {typePs && <span style={{ fontSize: 15, color: '#111827' }}>{typePs}</span>}
               </div>
-              {pib && <span style={{ fontSize: 13, color: '#6B7280' }}>{pib}</span>}
+              {/* Екіпаж у правому куті */}
+              <CrewDisplay
+                crew={item.flight_crew}
+                commanderName={isAdmin ? (item.users?.name || '') : auth?.pib}
+              />
             </div>
             <div style={{ display: 'flex', background: '#F9FAFB', borderRadius: 12, padding: 12, gap: 16, marginBottom: 12 }}>
               <div style={{ flex: 1, textAlign: 'center' }}><div style={{ fontSize: 17 }}>{nalit || '00:00'}</div><div style={{ fontSize: 11, color: '#9CA3AF' }}>Наліт</div></div>

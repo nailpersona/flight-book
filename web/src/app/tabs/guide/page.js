@@ -27,6 +27,9 @@ export default function GuidePage() {
   const searchTimeoutRef = useRef(null);
   const searchInputRef = useRef(null);
 
+  // Exercise link mapping (exercise number -> section id)
+  const [exerciseMap, setExerciseMap] = useState({});
+
   useEffect(() => {
     loadDocuments();
   }, []);
@@ -245,6 +248,18 @@ export default function GuidePage() {
       const rootSections = data.filter(s => s.parent_id === null);
       const sectionMap = new Map(data.map(s => [s.id, s]));
 
+      // Build exercise map (exercise number -> section id)
+      const newExerciseMap = {};
+      const exercisePattern = /^(?:Вправа|вправа)\s*(\d+)(?:\s|$|\(|\.)/i;
+      data.forEach(section => {
+        const match = section.title?.match(exercisePattern);
+        if (match) {
+          const exerciseNum = match[1];
+          newExerciseMap[exerciseNum] = section.id;
+        }
+      });
+      setExerciseMap(newExerciseMap);
+
       // Recursive function to get children
       const getChildren = (parentId) => {
         return data
@@ -270,8 +285,8 @@ export default function GuidePage() {
     setSelectedDoc(doc);
     setBreadcrumb([{ title: doc.title_short, id: null }]);
 
-    // Check if this document has sections (ПВП ДАУ id=1, КЛПВ id=3)
-    if (doc.id === 1 || doc.id === 3) {
+    // Check if this document has sections (ПВП ДАУ id=1, КБП ВА id=2, КЛПВ id=3)
+    if (doc.id === 1 || doc.id === 2 || doc.id === 3) {
       loadSectionsTree(doc.id);
       setView('sections');
     } else {
@@ -359,7 +374,7 @@ export default function GuidePage() {
             <span style={{
               fontSize: 13,
               fontWeight: 400,
-              color: '#6366F1',
+              color: '#111827',
               marginRight: 8,
               minWidth: 24
             }}>
@@ -420,6 +435,18 @@ export default function GuidePage() {
         if (sectionsData) {
           const rootSections = sectionsData.filter(s => s.parent_id === null);
           const sectionMap = new Map(sectionsData.map(s => [s.id, s]));
+
+          // Build exercise map
+          const newExerciseMap = {};
+          const exercisePattern = /^(?:Вправа|вправа)\s*(\d+)(?:\s|$|\(|\.)/i;
+          sectionsData.forEach(section => {
+            const match = section.title?.match(exercisePattern);
+            if (match) {
+              const exerciseNum = match[1];
+              newExerciseMap[exerciseNum] = section.id;
+            }
+          });
+          setExerciseMap(newExerciseMap);
 
           const getChildren = (parentId) => {
             return sectionsData
@@ -519,38 +546,68 @@ export default function GuidePage() {
     };
 
     const renderInlineFormatting = (text) => {
-      // Handle section links: [text](#section-id)
+      // Handle section links: [text](#section-id) and exercise references: Вправа X
       const parts = [];
       let lastIndex = 0;
 
-      // Pattern for section links
+      // Combined pattern for section links and exercise references
       const linkPattern = /\[([^\]]+)\]\(#(\d+)\)/g;
-      let match;
+      const exercisePattern = /(?:Вправа|вправа|вправи|Вправи|впр\.?|Впр\.?)\s*(\d+)(?:(?:\s*\()?\s*(\d+)?\s*\)?(?=[\s,.\)]|$))/gi;
 
-      while ((match = linkPattern.exec(text)) !== null) {
-        // Add text before link
-        if (match.index > lastIndex) {
-          parts.push(renderBoldAndItalic(text.substring(lastIndex, match.index)));
+      // Collect all matches with their positions
+      const allMatches = [];
+
+      let linkMatch;
+      while ((linkMatch = linkPattern.exec(text)) !== null) {
+        allMatches.push({
+          type: 'link',
+          index: linkMatch.index,
+          length: linkMatch[0].length,
+          text: linkMatch[1],
+          sectionId: parseInt(linkMatch[2])
+        });
+      }
+
+      let exMatch;
+      while ((exMatch = exercisePattern.exec(text)) !== null) {
+        const exerciseNum = exMatch[1];
+        if (exerciseMap[exerciseNum]) {
+          allMatches.push({
+            type: 'exercise',
+            index: exMatch.index,
+            length: exMatch[0].length,
+            text: exMatch[0],
+            sectionId: exerciseMap[exerciseNum]
+          });
+        }
+      }
+
+      // Sort by index
+      allMatches.sort((a, b) => a.index - b.index);
+
+      // Build parts
+      allMatches.forEach((m, idx) => {
+        // Add text before this match
+        if (m.index > lastIndex) {
+          parts.push(renderBoldAndItalic(text.substring(lastIndex, m.index)));
         }
 
-        // Add link
-        const linkText = match[1];
-        const sectionId = parseInt(match[2]);
+        // Add the link
         parts.push(
           <span
-            key={`link-${match.index}`}
-            onClick={() => handleSectionLink(sectionId)}
+            key={`link-${m.index}-${idx}`}
+            onClick={() => handleSectionLink(m.sectionId)}
             style={{
               color: '#3B82F6',
               textDecoration: 'underline',
               cursor: 'pointer'
             }}
           >
-            {linkText}
+            {m.text}
           </span>
         );
-        lastIndex = match.index + match[0].length;
-      }
+        lastIndex = m.index + m.length;
+      });
 
       // Add remaining text
       if (lastIndex < text.length) {
@@ -587,9 +644,51 @@ export default function GuidePage() {
       return parts.length > 0 ? parts : text;
     };
 
+    // Check if line is an image markdown: ![alt](url)
+    const isImageLine = (line) => {
+      const trimmed = line.trim();
+      return trimmed.startsWith('![') && trimmed.includes('](') && trimmed.endsWith(')');
+    };
+
+    // Parse image markdown and return { alt, url }
+    const parseImage = (line) => {
+      const match = line.trim().match(/!\[([^\]]*)\]\(([^)]+)\)/);
+      if (match) {
+        return { alt: match[1], url: match[2] };
+      }
+      return null;
+    };
+
     // Process each line
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
+
+      // Check for image markdown
+      if (isImageLine(line)) {
+        flushParagraph();
+        const imageData = parseImage(line);
+        if (imageData) {
+          elements.push(
+            <div key={`img-${elements.length}`} style={{
+              margin: '16px 0',
+              overflowX: 'auto',
+              textAlign: 'center'
+            }}>
+              <img
+                src={imageData.url}
+                alt={imageData.alt}
+                style={{
+                  maxWidth: '100%',
+                  height: 'auto',
+                  borderRadius: 8,
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+                }}
+              />
+            </div>
+          );
+        }
+        continue;
+      }
 
       // Check for table row (starts and ends with |)
       if (line.startsWith('|') && line.endsWith('|')) {

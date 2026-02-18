@@ -92,3 +92,24 @@ export async function DELETE(request) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
+
+// PUT - update user position (add/remove from position)
+export async function PUT(request) {
+  try {
+    const body = await request.json();
+    const { userId, positionId } = body;
+    const supabase = getAdminClient();
+
+    const { data, error } = await supabase
+      .from('users')
+      .update({ position_id: positionId })
+      .eq('id', userId)
+      .select('id, name, position_id')
+      .single();
+
+    if (error) throw error;
+    return NextResponse.json({ success: true, data });
+  } catch (err) {
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
+}

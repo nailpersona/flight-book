@@ -201,10 +201,7 @@ export default function FlightSummaryPage() {
           <IoChevronBack size={20} />
         </button>
         <span className={s.topBarTitle}>Підсумки</span>
-      </div>
-
-      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
-        <div className={s.select} onClick={() => setMenuOpen(true)} style={{ background: '#fff' }}>
+        <div className={s.select} onClick={() => setMenuOpen(true)} style={{ background: '#fff', marginLeft: 'auto' }}>
           <span className={s.selectText}>{periodLabel}</span>
           <span className={s.selectArrow}><IoChevronDown size={16} /></span>
         </div>

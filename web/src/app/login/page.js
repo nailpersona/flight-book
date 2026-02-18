@@ -58,6 +58,13 @@ export default function LoginPage() {
 
   const onRegister = async (e) => {
     e.preventDefault();
+    console.log('=== REGISTER DEBUG ===');
+    console.log('email:', email.trim());
+    console.log('name:', name.trim());
+    console.log('inviteCode:', inviteCode.trim());
+    console.log('crewRole:', crewRole);
+    console.log('password length:', pass.trim().length);
+
     if (!email.trim() || !pass.trim() || !name.trim() || !inviteCode.trim() || !crewRole) {
       window.alert('Заповніть усі поля');
       return;
@@ -71,6 +78,10 @@ export default function LoginPage() {
         p_invite_code: inviteCode.trim(),
         p_crew_role: crewRole,
       });
+
+      console.log('RPC response:', j);
+      console.log('RPC error:', rpcErr);
+
       if (rpcErr) throw new Error(rpcErr.message);
       if (!j?.ok) throw new Error(j?.error || 'Помилка реєстрації');
 

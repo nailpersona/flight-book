@@ -11,6 +11,45 @@ import CustomCalendar from '../../../components/CustomCalendar';
 import Modal from '../../../components/Modal';
 import s from '../../../components/shared.module.css';
 
+// Mapping from normalized LP type names to display names (Зведена таблиця ЛП)
+const LP_NORMALIZED_TO_DISPLAY = {
+  'мала_висота': 'Польоти на Нмал',
+  'складний_пілотаж': 'Польоти на СП',
+  'пб_ударні': 'Повітр. бій з ударними',
+  'пб_винищувачі': 'Повітр. бій з винищ.',
+  'гмв_онб': 'Польоти на ГМВ (з ОНБ)',
+  'групова_злітаність': 'Польоти парою',
+  'бойове_застосування': 'Польоти на БЗ',
+  'бз_нц_прості': 'БЗ по НЦ з ПВМ',
+  'бз_нц_складні': 'БЗ по НЦ з СВМ',
+  'пб_нешвидкісні': 'ПБ за нешвидк. ПЦ',
+  'десантування': 'Десантування',
+  'продовжений_зліт': 'Продовж. зліт/посадка',
+  'пошуково_рятувальні': 'Пошуково-рятувальні',
+  'зовнішня_підвіска': 'Зовнішня підвіска/евак.',
+  // Додаткові з КБП ВА
+  'простий_пілотаж': 'Простий пілотаж',
+  'гмв': 'Пілотаж на ГМВ',
+  'атаки_пвм': 'Атаки з ПВМ',
+  'атаки_свм': 'Атаки зі СВМ',
+  'атаки_парою_пвм': 'Атаки парою з ПВМ',
+  'атаки_пц': 'Атаки повітряних цілей',
+  'мвк_гори': 'МВК у горах',
+  'мв_гмв_мвк': 'МВ, ГМВ та МВК',
+  'дозаправка': 'Дозаправка у повітрі',
+  'бойове_маневрування': 'Бойове маневрування',
+  'бомбометання': 'Бомбометання',
+  'група': 'Польоти у складі групи',
+  'малі_висоти': 'Польоти на малих висотах',
+  'малі_висоти_клпв': 'Польоти на малих висотах',
+  'гмв_онб_клпв': 'Польоти на ГМВ (з ОНБ)',
+  'дозаправлення_клпв': 'Польоти на дозаправлення',
+  'десантування_клпв': 'Польоти на десантування',
+  'групова_злітаність_зімкнуті': 'Групова злітаність (зімкнуті)',
+  'зовнішня_підвіска_евакуація': 'Зовнішня підвіска/евакуація',
+  'захід_макс_градієнт': 'Захід з макс. градієнтом',
+};
+
 function ddmmyyyy(d) {
   const dd = String(d.getDate()).padStart(2, '0');
   const mm = String(d.getMonth() + 1).padStart(2, '0');
@@ -181,7 +220,24 @@ function CrewModal({ visible, aircraftType, roles, showTechnician, pilots, crew,
   );
 }
 
-function FlightFeedbackModal({ visible, data, onClose }) {
+// Функція для отримання display name з normalized name
+function getLpDisplayName(normalizedName) {
+  return LP_NORMALIZED_TO_DISPLAY[normalizedName] || normalizedName;
+}
+
+// Функція для визначення тексту продовження терміну
+function getExtensionText(flightType, hasInstructor) {
+  if (flightType === 'Контрольний') {
+    return '+10 днів';
+  }
+  if (flightType === 'За інструктора') {
+    return '+50% до терміну';
+  }
+  // Тренувальний та інші
+  return 'повний термін';
+}
+
+function FlightFeedbackModal({ visible, data, onClose, onRedirect }) {
   const [correcting, setCorrecting] = useState(false);
   const [checkedLp, setCheckedLp] = useState({});
   const [saving, setSaving] = useState(false);
@@ -194,8 +250,12 @@ function FlightFeedbackModal({ visible, data, onClose }) {
       setCheckedLp(init);
       setCorrecting(false);
       (async () => {
-        const { data: types } = await supabase.from('break_periods_lp').select('lp_type').order('lp_type');
-        if (types) setAllLpTypes([...new Set(types.map(t => t.lp_type))]);
+        const { data: types } = await supabase.from('break_periods_lp').select('lp_type_normalized, lp_type').order('lp_type');
+        if (types) {
+          // Унікальні normalized типи з display names
+          const uniqueTypes = [...new Set(types.map(t => t.lp_type_normalized))];
+          setAllLpTypes(uniqueTypes);
+        }
       })();
     }
   }, [visible, data]);
@@ -205,6 +265,7 @@ function FlightFeedbackModal({ visible, data, onClose }) {
       await supabase.from('flight_updates_log').update({ confirmed: true }).eq('id', data.logId);
     }
     onClose();
+    if (data?.isEdit && onRedirect) onRedirect();
   };
 
   const handleCorrection = async () => {
@@ -228,6 +289,7 @@ function FlightFeedbackModal({ visible, data, onClose }) {
         await supabase.from('lp_break_dates').upsert({ user_id: data.userId, lp_type: lp, last_date: flightDate }, { onConflict: 'user_id,lp_type' });
       }
       onClose();
+      if (data?.isEdit && onRedirect) onRedirect();
     } catch (err) {
       window.alert(String(err.message || err));
     } finally { setSaving(false); }
@@ -236,18 +298,26 @@ function FlightFeedbackModal({ visible, data, onClose }) {
   if (!data) return null;
   const muList = data.detectedMu || [];
   const lpList = data.detectedLp || [];
+  const titleText = data.isEdit ? 'Запис оновлено' : 'Запис додано';
+  const extensionText = getExtensionText(data.flightType, data.hasInstructor);
+  const isControlFlight = data.flightType === 'Контрольний';
 
   return (
-    <Modal visible={visible} onClose={onClose}>
+    <Modal visible={visible} onClose={() => { onClose(); if (data?.isEdit && onRedirect) onRedirect(); }}>
       {!correcting ? (
         <>
           <div className={s.feedbackCenter}>
             <IoCheckmarkCircleOutline size={40} color="#111827" />
-            <div className={s.label} style={{marginTop:8,fontSize:16}}>Запис додано</div>
+            <div className={s.label} style={{marginTop:8,fontSize:16}}>{titleText}</div>
           </div>
           <div className={s.feedbackLabel}>Ви подовжили перерви:</div>
           {muList.length > 0 && <div className={s.feedbackSection}><div className={s.feedbackSectionTitle}>МУ:</div><div className={s.feedbackItems}>{muList.join(', ')}</div></div>}
-          {lpList.length > 0 && <div className={s.feedbackSection}><div className={s.feedbackSectionTitle}>Види ЛП:</div>{lpList.map((lp,i)=><div key={i} className={s.feedbackItem}>{lp}</div>)}</div>}
+          {lpList.length > 0 && (
+            <div className={s.feedbackSection}>
+              <div className={s.feedbackSectionTitle}>Види ЛП ({extensionText}):</div>
+              {lpList.map((lp,i)=><div key={i} className={s.feedbackItem}>{getLpDisplayName(lp)}</div>)}
+            </div>
+          )}
           {lpList.length === 0 && muList.length > 0 && <div className={s.feedbackNote}>Види ЛП не визначено (немає вправ)</div>}
           <div className={s.feedbackLabel} style={{marginTop:12}}>Вірно?</div>
           <div className={s.row} style={{marginTop:12}}>
@@ -263,7 +333,7 @@ function FlightFeedbackModal({ visible, data, onClose }) {
             {allLpTypes.map((lp,i) => (
               <div key={i} className={s.checkRow} onClick={()=>setCheckedLp(p=>({...p,[lp]:!p[lp]}))}>
                 <input type="checkbox" checked={!!checkedLp[lp]} readOnly style={{accentColor:'#111827'}} />
-                <span className={s.checkLabel}>{lp}</span>
+                <span className={s.checkLabel}>{getLpDisplayName(lp)}</span>
               </div>
             ))}
           </div>
@@ -386,6 +456,16 @@ export default function MainPage() {
           const matched = allExercises.filter(e => exIds.includes(e.id));
           setSelectedExercises(matched);
         }
+        // Завантажити екіпаж
+        const { data: crewData } = await supabase.from('flight_crew').select('id, role, user_id, custom_name, users(name)').eq('flight_id', id);
+        if (crewData?.length) {
+          const loadedCrew = crewData.map(c => ({
+            role: c.role,
+            name: c.users?.name || c.custom_name || '',
+            userId: c.user_id,
+          }));
+          setCrewMembers(loadedCrew);
+        }
       })();
     } catch (e) { console.warn('edit parse error', e); }
   }, [loading, allExercises]);
@@ -434,6 +514,7 @@ export default function MainPage() {
       const weather_conditions = timeDayMu.substring(1);
       const { data: userData, error: userErr } = await supabase.from('users').select('id').eq('name', auth.pib).single();
       if (userErr || !userData) throw new Error('Користувача не знайдено');
+
       const { data: atData, error: atErr } = await supabase.from('aircraft_types').select('id').eq('name', typePs).single();
       if (atErr || !atData) throw new Error('Тип ПС не знайдено');
 
@@ -461,9 +542,32 @@ export default function MainPage() {
           await supabase.from('fuel_records').insert({ flight_id: editFlightId, airfield: fuel.airfield, fuel_amount: parseFloat(fuel.amount) || 0 });
         }
 
-        window.alert('Запис оновлено');
+        // Оновити екіпаж
+        await supabase.from('flight_crew').delete().eq('flight_id', editFlightId);
+        if (crewMembers.length > 0) {
+          const crewRecords = crewMembers.map(m => ({
+            flight_id: editFlightId,
+            user_id: m.userId || null,
+            custom_name: m.userId ? null : m.name,
+            role: m.role,
+          }));
+          await supabase.from('flight_crew').insert(crewRecords);
+        }
+
+        // Отримати log після оновлення і показати модальне вікно з перервами
+        await new Promise(r => setTimeout(r, 300));
+        const { data: log } = await supabase.from('flight_updates_log').select('*').eq('flight_id', editFlightId).maybeSingle();
+        const detectedMu = log?.detected_mu || [];
+        const detectedLp = log?.detected_lp || [];
+
+        if (detectedMu.length > 0 || detectedLp.length > 0) {
+          setFeedbackData({ flightId: editFlightId, userId: userData.id, detectedMu, detectedLp, logId: log?.id, exerciseIds: selectedExercises.map(e => e.id), flightType: dbFlightType, hasInstructor: crewMembers.some(m => m.role === 'Інструктор'), isEdit: true });
+          setShowFeedback(true);
+        } else {
+          window.alert('Запис оновлено');
+          router.push('/tabs/my-records');
+        }
         resetForm();
-        router.push('/tabs/my-records');
       } else {
         const { data: flight, error: flightErr } = await supabase.from('flights').insert(flightPayload).select().single();
         if (flightErr) throw flightErr;
@@ -475,26 +579,15 @@ export default function MainPage() {
           await supabase.from('fuel_records').insert({ flight_id: flight.id, airfield: fuel.airfield, fuel_amount: parseFloat(fuel.amount) || 0 });
         }
 
-        // Створити польоти для членів екіпажу (тих, що вибрані зі списку - мають userId)
-        const crewWithUserId = crewMembers.filter(m => m.userId);
-        for (const member of crewWithUserId) {
-          const { data: crewFlight } = await supabase.from('flights').insert({
-            user_id: member.userId,
-            date: dateStr,
-            aircraft_type_id: atData.id,
-            time_of_day,
-            weather_conditions,
-            flight_type: 'У складі екіпажу',
-            document_source: docSource || null,
-            flight_time: toHhMmSs(nalit),
-            combat_applications: 0,
-            flight_purpose: `${member.role}: ${member.name}`,
-            flights_count: 1,
-          }).select().maybeSingle();
-
-          if (crewFlight && selectedExercises.length > 0) {
-            await supabase.from('flight_exercises').insert(selectedExercises.map(ex => ({ flight_id: crewFlight.id, exercise_id: ex.id })));
-          }
+        // Зберегти членів екіпажу в flight_crew
+        if (crewMembers.length > 0) {
+          const crewRecords = crewMembers.map(m => ({
+            flight_id: flight.id,
+            user_id: m.userId || null,
+            custom_name: m.userId ? null : m.name,
+            role: m.role,
+          }));
+          await supabase.from('flight_crew').insert(crewRecords);
         }
 
         await new Promise(r => setTimeout(r, 300));
@@ -503,7 +596,7 @@ export default function MainPage() {
         const detectedLp = log?.detected_lp || [];
 
         if (detectedMu.length > 0 || detectedLp.length > 0) {
-          setFeedbackData({ flightId: flight.id, userId: userData.id, detectedMu, detectedLp, logId: log?.id, exerciseIds: selectedExercises.map(e => e.id) });
+          setFeedbackData({ flightId: flight.id, userId: userData.id, detectedMu, detectedLp, logId: log?.id, exerciseIds: selectedExercises.map(e => e.id), flightType: dbFlightType, hasInstructor: crewMembers.some(m => m.role === 'Інструктор') });
           setShowFeedback(true);
         } else {
           window.alert('Запис додано');
@@ -631,7 +724,7 @@ export default function MainPage() {
         </button>
       </div>
 
-      <FlightFeedbackModal visible={showFeedback} data={feedbackData} onClose={() => { setShowFeedback(false); setFeedbackData(null); }} />
+      <FlightFeedbackModal visible={showFeedback} data={feedbackData} onClose={() => { setShowFeedback(false); setFeedbackData(null); }} onRedirect={() => router.push('/tabs/my-records')} />
 
       <CrewModal
         visible={showCrewModal}

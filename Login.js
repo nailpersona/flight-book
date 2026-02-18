@@ -65,6 +65,13 @@ export default function Login({ navigation }) {
     }
     try {
       setBusy(true);
+      console.log('=== REGISTER DEBUG ===');
+      console.log('email:', email.trim());
+      console.log('name:', name.trim());
+      console.log('inviteCode:', inviteCode.trim());
+      console.log('crewRole:', crewRole);
+      console.log('password length:', pass.trim().length);
+
       const { data: j, error: rpcErr } = await supabase.rpc('fn_register_with_position_invite', {
         p_email: email.trim(),
         p_password: pass.trim(),
@@ -72,6 +79,10 @@ export default function Login({ navigation }) {
         p_invite_code: inviteCode.trim(),
         p_crew_role: crewRole,
       });
+
+      console.log('RPC response:', JSON.stringify(j, null, 2));
+      console.log('RPC error:', rpcErr);
+
       if (rpcErr) throw new Error(rpcErr.message);
       if (!j?.ok) throw new Error(j?.error || 'Помилка реєстрації');
 
@@ -97,6 +108,8 @@ export default function Login({ navigation }) {
   };
 
   const handleSubmit = () => {
+    console.log('=== handleSubmit called ===');
+    console.log('isRegister:', isRegister);
     if (isRegister) {
       onRegister();
     } else {

@@ -7,17 +7,18 @@
   font-family: 'News Cycle', sans-serif;
 }
 
-/* Header */
-.header {
+/* Filter row */
+.filterRow {
   display: flex;
   align-items: center;
-  gap: 16px;
-  margin-bottom: 24px;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
 }
 .backBtn {
-  height: 40px;
-  width: 40px;
-  border-radius: 10px;
+  height: 36px;
+  width: 36px;
+  border-radius: 8px;
   border: 1px solid #E5E7EB;
   background: #FFFFFF;
   display: flex;
@@ -26,49 +27,13 @@
   cursor: pointer;
 }
 .backBtn:hover { background: #F9FAFB; }
-.titleBlock {
-  flex: 1;
-}
-.title {
-  font-size: 20px;
-  font-weight: 400;
-  color: #111827;
-}
-.subtitle {
-  font-size: 13px;
-  color: #6B7280;
-  font-weight: 400;
-  margin-top: 2px;
-}
-.printBtn {
-  height: 40px;
-  padding: 0 16px;
-  border-radius: 10px;
-  border: 1px solid #E5E7EB;
-  background: #FFFFFF;
-  font-size: 14px;
-  font-weight: 400;
-  color: #111827;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-family: inherit;
-}
-.printBtn:hover { background: #F9FAFB; }
 
-/* Period selector */
-.periodRow {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 20px;
-}
+/* Period selector in header */
 .periodSelect {
-  min-width: 140px;
-  height: 40px;
+  min-width: 130px;
+  height: 36px;
   padding: 0 12px;
-  border-radius: 10px;
+  border-radius: 8px;
   border: 1px solid #E5E7EB;
   background: #FFFFFF;
   display: flex;
@@ -79,7 +44,7 @@
 }
 .periodSelect:hover { background: #F9FAFB; }
 .periodText {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 400;
   color: #111827;
 }
@@ -88,37 +53,86 @@
   display: flex;
   align-items: center;
 }
-.periodInfo {
-  font-size: 14px;
-  font-weight: 400;
-  color: #6B7280;
-}
 
-/* Custom date row */
-.customDateRow {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 20px;
-}
-.dateBtn {
-  flex: 1;
-  height: 40px;
-  padding: 0 12px;
-  border-radius: 10px;
+/* Small date buttons in header */
+.dateBtnSmall {
+  height: 36px;
+  padding: 0 10px;
+  border-radius: 8px;
   border: 1px solid #E5E7EB;
   background: #FFFFFF;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 400;
   color: #111827;
 }
-.dateBtn:hover { background: #F9FAFB; }
-.dateSep {
+.dateBtnSmall:hover { background: #F9FAFB; }
+.dateSepSmall {
   color: #9CA3AF;
+  font-size: 13px;
+}
+
+/* Organization filter in header */
+.orgFilter {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.orgCheckbox {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 400;
+  color: #111827;
+}
+.orgCheckbox input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+  accent-color: #6B7280;
+}
+
+.printBtn {
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 8px;
+  border: 1px solid #E5E7EB;
+  background: #FFFFFF;
+  font-size: 13px;
+  font-weight: 400;
+  color: #111827;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: inherit;
+}
+.printBtn:hover { background: #F9FAFB; }
+
+/* Title row above table */
+.titleRow {
+  font-size: 16px;
+  font-weight: 400;
+  color: #111827;
+  margin-bottom: 12px;
+  text-align: center;
+}
+
+/* Organization header */
+.orgHeader {
+  font-size: 13px;
+  font-weight: 400;
+  color: #111827;
+  background: #D1D5DB;
+  padding: 10px 16px;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  text-align: center;
 }
 
 /* Table */
@@ -380,10 +394,33 @@
 }
 
 /* ── Print ── */
+@page {
+  size: A4 landscape;
+  margin: 10mm;
+}
+
 @media print {
-  .backBtn, .printBtn, .periodSelect, .periodInfo, .customDateRow { display: none !important; }
-  .container { padding: 8px; max-width: none; }
-  .table { font-size: 10px; }
-  .tableWrap { overflow: visible; box-shadow: none; border: 1px solid #E5E7EB; }
-  .footer { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .filterRow { display: none !important; }
+  .container {
+    padding: 0;
+    max-width: none;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .tableWrap {
+    overflow: visible;
+    border-radius: 14px !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08) !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .orgHeader {
+    border-radius: 8px !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .matrixTable {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
 }

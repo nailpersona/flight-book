@@ -43,6 +43,47 @@ function DetailRow({ icon, label, value }) {
   );
 }
 
+/** Форматування ПІБ з званням */
+// Примітка: name вже містить звання (наприклад "п/п-к Філенко М.М."), тому rank не додаємо
+function formatNameWithRank(name, rank) {
+  if (!name) return '';
+  return name; // name вже містить звання
+}
+
+/** Компонент для відображення екіпажу */
+function CrewDisplay({ crew, commanderName }) {
+  // Форматуємо рядки екіпажу
+  const crewLines = [];
+
+  // Командир екіпажу (автор запису)
+  if (commanderName) {
+    crewLines.push({ label: 'Ком. екіпажу', name: commanderName });
+  }
+
+  // Члени екіпажу
+  if (crew && crew.length > 0) {
+    crew.forEach(member => {
+      const memberName = member.users?.name || member.custom_name || '';
+      if (memberName) {
+        crewLines.push({ label: member.role, name: memberName });
+      }
+    });
+  }
+
+  if (crewLines.length === 0) return null;
+
+  return (
+    <View style={s.crewBlock}>
+      {crewLines.map((line, idx) => (
+        <View key={idx} style={s.crewRow}>
+          <Text style={s.crewLabel}>{line.label}:</Text>
+          <Text style={s.crewName}>{line.name}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
 export default function MyRecords({ navigation }) {
   const { auth } = useContext(AuthCtx);
   const { tabNavigate } = useContext(TabNavigationContext);
@@ -72,7 +113,8 @@ export default function MyRecords({ navigation }) {
           combat_applications, flight_purpose, notes, flights_count,
           aircraft_types(name),
           fuel_records(airfield, fuel_amount),
-          users!flights_user_id_fkey(name)
+          users!flights_user_id_fkey(name, rank),
+          flight_crew(id, role, user_id, custom_name, users(name, rank))
         `)
         .order('date', { ascending: false });
 
@@ -151,7 +193,11 @@ export default function MyRecords({ navigation }) {
             </View>
             {!!typePs && <Text style={s.typeText}>{typePs}</Text>}
           </View>
-          {!!pib && <Text style={s.pibText}>{pib}</Text>}
+          {/* Екіпаж у правому куті */}
+          <CrewDisplay
+            crew={item.flight_crew}
+            commanderName={isAdmin ? (item.users?.name || '') : auth?.pib}
+          />
         </View>
 
         {/* Основні числа */}
@@ -314,6 +360,28 @@ const s = StyleSheet.create({
     color: Colors.textSecondary,
   },
 
+  // Crew display (в хедері)
+  crewBlock: {
+    alignItems: 'flex-end',
+  },
+  crewRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  crewLabel: {
+    fontFamily: FONT,
+    fontSize: 11,
+    fontWeight: '400',
+    color: Colors.textTertiary,
+  },
+  crewName: {
+    fontFamily: FONT,
+    fontSize: 11,
+    fontWeight: '400',
+    color: Colors.textSecondary,
+  },
+
   // Stats row
   statsRow: {
     flexDirection: 'row',
@@ -359,6 +427,32 @@ const s = StyleSheet.create({
     width: 120,
   },
   detailValue: {
+    fontFamily: FONT,
+    fontSize: 13,
+    fontWeight: '400',
+    color: Colors.textPrimary,
+    flex: 1,
+  },
+
+  // Crew display
+  crewBlock: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Colors.borderLight,
+    gap: 2,
+  },
+  crewRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  crewLabel: {
+    fontFamily: FONT,
+    fontSize: 13,
+    fontWeight: '400',
+    color: Colors.textTertiary,
+  },
+  crewName: {
     fontFamily: FONT,
     fontSize: 13,
     fontWeight: '400',

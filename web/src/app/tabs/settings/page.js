@@ -278,6 +278,50 @@ export default function SettingsPage() {
 
       if (error) throw error;
 
+      // Sync aircraft types with user_aircraft table
+      // This is needed for the Readiness (Зведена таблиця) page
+      if (auth?.userId) {
+        // Get all aircraft type IDs
+        const { data: aircraftTypesData } = await supabase
+          .from('aircraft_types')
+          .select('id, name');
+
+        if (aircraftTypesData) {
+          // Get current user aircraft
+          const { data: currentUserAircraft } = await supabase
+            .from('user_aircraft')
+            .select('aircraft_type_id')
+            .eq('user_id', auth.userId);
+
+          const currentIds = new Set((currentUserAircraft || []).map(ua => ua.aircraft_type_id));
+
+          // Find IDs for selected aircraft types
+          const selectedIds = aircraftTypesData
+            .filter(at => selectedAircraftTypes.includes(at.name))
+            .map(at => at.id);
+
+          // Add new aircraft types
+          const toAdd = selectedIds.filter(id => !currentIds.has(id));
+          for (const aircraftTypeId of toAdd) {
+            await supabase
+              .from('user_aircraft')
+              .insert({ user_id: auth.userId, aircraft_type_id: aircraftTypeId });
+          }
+
+          // Remove aircraft types that are no longer selected (only if user had some selected before)
+          if (selectedAircraftTypes.length > 0) {
+            const toRemove = [...currentIds].filter(id => !selectedIds.includes(id));
+            for (const aircraftTypeId of toRemove) {
+              await supabase
+                .from('user_aircraft')
+                .delete()
+                .eq('user_id', auth.userId)
+                .eq('aircraft_type_id', aircraftTypeId);
+            }
+          }
+        }
+      }
+
       window.alert('Налаштування збережено');
       router.push('/tabs/profile');
     } catch (error) {

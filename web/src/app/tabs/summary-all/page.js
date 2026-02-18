@@ -23,6 +23,17 @@ const FLIGHT_TYPES_ORDER = [
   'У складі екіпажу',
 ];
 
+// Positions for ДНДІ group (in order)
+const DNDI_POSITIONS = [
+  'Заступник командира в/ч А3444 з ЛП',
+  'Начальник СБП в/ч А3444',
+  'Начальник ЛМВ в/ч А3444',
+  'Головний штурман в/ч А3444',
+];
+
+// Check if position belongs to ДНДІ group
+const isDndiPosition = (position) => DNDI_POSITIONS.includes(position);
+
 function getDateRange(k) {
   const now = new Date();
   const y = now.getFullYear();
@@ -69,6 +80,8 @@ export default function SummaryAllPage() {
   const [calTarget, setCalTarget] = useState(null);
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState(null);
+  const [showDndi, setShowDndi] = useState(true);
+  const [showLvk, setShowLvk] = useState(true);
 
   const periodLabel = PERIODS.find(p => p.key === period)?.label || '';
 
@@ -87,14 +100,23 @@ export default function SummaryAllPage() {
       const pStart = toISO(range.start);
       const pEnd = toISO(range.end);
 
+      // flights.user_id — це командир запису, його наліт завжди йде в загальну статистику
+      // Члени екіпажу (flight_crew) не враховуються тут — тільки в особистій статистиці
       const { data: flights, error } = await supabase
         .from('flights')
-        .select('date, aircraft_type_id, flight_type, flight_time, flights_count, time_of_day, aircraft_types(name)')
+        .select('date, aircraft_type_id, flight_type, flight_time, flights_count, time_of_day, aircraft_types(name), users(position)')
         .gte('date', pStart)
         .lte('date', pEnd)
         .order('date');
 
       if (error) throw error;
+
+      // Filter flights by organization
+      const filteredFlights = (flights || []).filter(f => {
+        const isDndi = isDndiPosition(f.users?.position);
+        if (isDndi) return showDndi;
+        return showLvk;
+      });
 
       // Collect all aircraft types
       const aircraftSet = new Set();
@@ -103,7 +125,7 @@ export default function SummaryAllPage() {
       // Structure: { aircraftType: { flightType: { day: {flights, minutes}, night: {flights, minutes} } } }
       const byAircraft = {};
 
-      (flights || []).forEach(f => {
+      filteredFlights.forEach(f => {
         const ac = f.aircraft_types?.name || '—';
         const type = f.flight_type || 'Інше';
         const isNight = f.time_of_day === 'Н';
@@ -176,7 +198,7 @@ export default function SummaryAllPage() {
 
       // Count flight dates
       const flightDates = new Set();
-      (flights || []).forEach(f => flightDates.add(f.date));
+      filteredFlights.forEach(f => flightDates.add(f.date));
 
       const hasNight = totalNight.flights > 0;
 
@@ -198,7 +220,7 @@ export default function SummaryAllPage() {
     } finally {
       setLoading(false);
     }
-  }, [period, customStart, customEnd]);
+  }, [period, customStart, customEnd, showDndi, showLvk]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -215,48 +237,65 @@ export default function SummaryAllPage() {
 
   const hasData = data && data.aircraftTypes.length > 0;
 
+  // Get period date string for title
+  const getPeriodDates = () => {
+    const today = fmtDate(new Date());
+    if (period === 'custom' && customStart && customEnd) {
+      return `в період з ${fmtDate(customStart)} по ${fmtDate(customEnd)}`;
+    }
+    const range = getDateRange(period);
+    const endDate = range.end > new Date() ? today : fmtDate(range.end);
+    return `в період з ${fmtDate(range.start)} по ${endDate}`;
+  };
+
   return (
     <div className={s.container}>
-      <div className={s.header}>
+      {/* Filter row */}
+      <div className={s.filterRow}>
         <button className={s.backBtn} onClick={() => router.push('/tabs/readiness')}>
           <IoChevronBack size={20} />
         </button>
-        <div className={s.titleBlock}>
-          <div className={s.title}>Підсумки льотної підготовки</div>
-          <div className={s.subtitle}>{dateStr}</div>
+
+        <div style={{ flex: 1 }} />
+
+        {/* Period selector */}
+        <div className={s.periodSelect} onClick={() => setMenuOpen(true)}>
+          <span className={s.periodText}>{periodLabel}</span>
+          <span className={s.periodArrow}><IoChevronDown size={16} /></span>
         </div>
+
+        {/* Custom date range */}
+        {period === 'custom' && (
+          <>
+            <div className={s.dateBtnSmall} onClick={() => setCalTarget('start')}>
+              <IoCalendarOutline size={14} />
+              <span>{customStart ? fmtDate(customStart) : 'Від'}</span>
+            </div>
+            <span className={s.dateSepSmall}>—</span>
+            <div className={s.dateBtnSmall} onClick={() => setCalTarget('end')}>
+              <IoCalendarOutline size={14} />
+              <span>{customEnd ? fmtDate(customEnd) : 'До'}</span>
+            </div>
+          </>
+        )}
+
+        {/* Organization filter */}
+        <div className={s.orgFilter}>
+          <label className={s.orgCheckbox}>
+            <input type="checkbox" checked={showDndi} onChange={(e) => setShowDndi(e.target.checked)} />
+            <span>ДНДІ</span>
+          </label>
+          <label className={s.orgCheckbox}>
+            <input type="checkbox" checked={showLvk} onChange={(e) => setShowLvk(e.target.checked)} />
+            <span>ЛВК</span>
+          </label>
+        </div>
+
         <button className={s.printBtn} onClick={handlePrint}>
           <IoPrintOutline size={18} />
           Друк
         </button>
       </div>
-
-      <div className={s.periodRow}>
-        <div className={s.periodSelect} onClick={() => setMenuOpen(true)}>
-          <span className={s.periodText}>{periodLabel}</span>
-          <span className={s.periodArrow}><IoChevronDown size={16} /></span>
-        </div>
-        <div className={s.periodInfo}>
-          {period === 'this_year' || period === 'last_year'
-            ? `За ${data?.year || '...'} рік`
-            : `${customStart ? fmtDate(customStart) : '...'} — ${customEnd ? fmtDate(customEnd) : '...'}`
-          }
-        </div>
-      </div>
-
-      {period === 'custom' && (
-        <div className={s.customDateRow}>
-          <div className={s.dateBtn} onClick={() => setCalTarget('start')}>
-            <IoCalendarOutline size={14} />
-            <span>{customStart ? fmtDate(customStart) : 'Від'}</span>
-          </div>
-          <span className={s.dateSep}>—</span>
-          <div className={s.dateBtn} onClick={() => setCalTarget('end')}>
-            <IoCalendarOutline size={14} />
-            <span>{customEnd ? fmtDate(customEnd) : 'До'}</span>
-          </div>
-        </div>
-      )}
 
       {loading && !data && (
         <div className={s.loading}>
@@ -266,6 +305,22 @@ export default function SummaryAllPage() {
 
       {hasData && (
         <>
+          {/* Title with period */}
+          <div className={s.titleRow}>
+            Підсумки льотної підготовки {getPeriodDates()}
+          </div>
+
+          {/* Organization header */}
+          {showDndi && !showLvk && (
+            <div className={s.orgHeader}>
+              ДЕРЖАВНИЙ НАУКОВО-ДОСЛІДНИЙ ІНСТИТУТ ВИПРОБУВАНЬ І СЕРТИФІКАЦІЇ ОЗБРОЄННЯ ТА ВІЙСЬКОВОЇ ТЕХНІКИ
+            </div>
+          )}
+          {!showDndi && showLvk && (
+            <div className={s.orgHeader}>
+              ЛЬОТНО-ВИПРОБУВАЛЬНИЙ КОМПЛЕКС
+            </div>
+          )}
           <div className={s.tableWrap}>
             <table className={s.matrixTable}>
               <thead>
@@ -395,9 +450,9 @@ export default function SummaryAllPage() {
 const base = { fontWeight: 400, whiteSpace: 'nowrap' };
 
 // Headers - як нижній рядок Всього
-const thFirst = { ...base, padding: '12px 12px', textAlign: 'left', fontSize: 12, color: '#111827', borderBottom: '2px solid #9CA3AF', background: '#D1D5DB' };
-const thAc = { ...base, padding: '12px 8px', textAlign: 'center', fontSize: 12, color: '#111827', borderBottom: '2px solid #9CA3AF', background: '#D1D5DB' };
-const thTotal = { ...base, padding: '12px 10px', textAlign: 'center', fontSize: 12, color: '#111827', borderBottom: '2px solid #9CA3AF', background: '#D1D5DB' };
+const thFirst = { ...base, padding: '12px 12px', textAlign: 'left', fontSize: 14, color: '#111827', borderBottom: '2px solid #9CA3AF', background: '#D1D5DB' };
+const thAc = { ...base, padding: '12px 8px', textAlign: 'center', fontSize: 14, color: '#111827', borderBottom: '2px solid #9CA3AF', background: '#D1D5DB' };
+const thTotal = { ...base, padding: '12px 10px', textAlign: 'center', fontSize: 14, color: '#111827', borderBottom: '2px solid #9CA3AF', background: '#D1D5DB' };
 
 // Data cells
 const tdName = { ...base, padding: '10px 12px', fontSize: 13, color: '#374151', borderBottom: '1px solid #F3F4F6' };

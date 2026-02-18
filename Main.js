@@ -13,6 +13,45 @@ import { Colors, Shadows, BorderRadius, Spacing, FONT } from './theme';
 import { TabNavigationContext } from './FixedTabNavigator';
 import ThemedAlert from './ThemedAlert';
 
+// Mapping from normalized LP type names to display names (Зведена таблиця ЛП)
+const LP_NORMALIZED_TO_DISPLAY = {
+  'мала_висота': 'Польоти на Нмал',
+  'складний_пілотаж': 'Польоти на СП',
+  'пб_ударні': 'Повітр. бій з ударними',
+  'пб_винищувачі': 'Повітр. бій з винищ.',
+  'гмв_онб': 'Польоти на ГМВ (з ОНБ)',
+  'групова_злітаність': 'Польоти парою',
+  'бойове_застосування': 'Польоти на БЗ',
+  'бз_нц_прості': 'БЗ по НЦ з ПВМ',
+  'бз_нц_складні': 'БЗ по НЦ з СВМ',
+  'пб_нешвидкісні': 'ПБ за нешвидк. ПЦ',
+  'десантування': 'Десантування',
+  'продовжений_зліт': 'Продовж. зліт/посадка',
+  'пошуково_рятувальні': 'Пошуково-рятувальні',
+  'зовнішня_підвіска': 'Зовнішня підвіска/евак.',
+  // Додаткові з КБП ВА
+  'простий_пілотаж': 'Простий пілотаж',
+  'гмв': 'Пілотаж на ГМВ',
+  'атаки_пвм': 'Атаки з ПВМ',
+  'атаки_свм': 'Атаки зі СВМ',
+  'атаки_парою_пвм': 'Атаки парою з ПВМ',
+  'атаки_пц': 'Атаки повітряних цілей',
+  'мвк_гори': 'МВК у горах',
+  'мв_гмв_мвк': 'МВ, ГМВ та МВК',
+  'дозаправка': 'Дозаправка у повітрі',
+  'бойове_маневрування': 'Бойове маневрування',
+  'бомбометання': 'Бомбометання',
+  'група': 'Польоти у складі групи',
+  'малі_висоти': 'Польоти на малих висотах',
+  'малі_висоти_клпв': 'Польоти на малих висотах',
+  'гмв_онб_клпв': 'Польоти на ГМВ (з ОНБ)',
+  'дозаправлення_клпв': 'Польоти на дозаправлення',
+  'десантування_клпв': 'Польоти на десантування',
+  'групова_злітаність_зімкнуті': 'Групова злітаність (зімкнуті)',
+  'зовнішня_підвіска_евакуація': 'Зовнішня підвіска/евакуація',
+  'захід_макс_градієнт': 'Захід з макс. градієнтом',
+};
+
 // ─── Утиліти ───
 
 function ddmmyyyy(d) {
@@ -555,7 +594,9 @@ function FlightFeedbackModal({ visible, data, onClose }) {
       (bpData || []).forEach(t => {
         if (!seen.has(t.lp_type_normalized)) {
           seen.add(t.lp_type_normalized);
-          types.push({ normalized: t.lp_type_normalized, display: t.lp_type });
+          // Використовуємо display name з мапінгу або fallback на lp_type з БД
+          const displayName = LP_NORMALIZED_TO_DISPLAY[t.lp_type_normalized] || t.lp_type;
+          types.push({ normalized: t.lp_type_normalized, display: displayName });
         }
       });
       setLpTypes(types);
@@ -726,6 +767,9 @@ function FlightFeedbackModal({ visible, data, onClose }) {
                 Перерви за видами ЛП ({data.docSource})
               </Text>
               <Text style={s.feedbackNote}>
+                Продовження: {getExtensionText(data.flightType, data.hasInstructor)}
+              </Text>
+              <Text style={[s.feedbackNote, { marginTop: 2 }]}>
                 Відмітьте види ЛП, де ви продовжили терміни
               </Text>
               <ScrollView style={{ maxHeight: 300, marginVertical: Spacing.sm }}>
@@ -797,6 +841,18 @@ function getExtensionType(flightType, hasInstructor) {
     default:
       return 'full';
   }
+}
+
+// Функція для отримання тексту продовження терміну
+function getExtensionText(flightType, hasInstructor) {
+  if (flightType === 'Контрольний') {
+    return '+10 днів';
+  }
+  if (flightType === 'За інструктора') {
+    return '+50% до терміну';
+  }
+  // Тренувальний та інші
+  return 'повний термін';
 }
 
 // ─── Головний екран ───
@@ -949,6 +1005,22 @@ export default function Main({ route, navigation }) {
 
     setFlightPurpose(data.flight_purpose || '');
 
+    // Завантажити екіпаж з бази
+    (async () => {
+      const { data: crewData } = await supabase
+        .from('flight_crew')
+        .select('id, role, user_id, custom_name, users(name)')
+        .eq('flight_id', id);
+      if (crewData?.length) {
+        const loadedCrew = crewData.map(c => ({
+          role: c.role,
+          name: c.users?.name || c.custom_name || '',
+          userId: c.user_id,
+        }));
+        setCrewMembers(loadedCrew);
+      }
+    })();
+
     navigation.setParams({ edit: undefined });
   }, [route?.params?.edit]);
 
@@ -1061,6 +1133,18 @@ export default function Main({ route, navigation }) {
           });
         }
 
+        // Оновити екіпаж
+        await supabase.from('flight_crew').delete().eq('flight_id', editFlightId);
+        if (crewMembers.length > 0) {
+          const crewRecords = crewMembers.map(m => ({
+            flight_id: editFlightId,
+            user_id: m.userId || null,
+            custom_name: m.userId ? null : m.name,
+            role: m.role,
+          }));
+          await supabase.from('flight_crew').insert(crewRecords);
+        }
+
         ThemedAlert.alert('Готово', 'Запис оновлено');
         resetForm();
         tabNavigate('MyRecords');
@@ -1154,15 +1238,6 @@ export default function Main({ route, navigation }) {
           .select()
           .maybeSingle();
 
-        // Зберігаємо роль в flight_crew
-        if (crewFlight) {
-          await supabase.from('flight_crew').insert({
-            flight_id: flight.id,
-            user_id: member.userId,
-            role: member.role,
-          });
-        }
-
         // Копіюємо вправи в політ члена екіпажу
         if (crewFlight && selectedExercises.length > 0) {
           await supabase
@@ -1172,6 +1247,17 @@ export default function Main({ route, navigation }) {
               exercise_id: ex.id,
             })));
         }
+      }
+
+      // Зберігаємо всіх членів екіпажу в flight_crew
+      if (crewMembers.length > 0) {
+        const crewRecords = crewMembers.map(m => ({
+          flight_id: flight.id,
+          user_id: m.userId || null,
+          custom_name: m.userId ? null : m.name,
+          role: m.role,
+        }));
+        await supabase.from('flight_crew').insert(crewRecords);
       }
 
       // Small delay for triggers to complete, then get detection log

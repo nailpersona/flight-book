@@ -51,13 +51,13 @@ export default function Profile({ navigation }) {
 
           <ProfileButton
             icon="bar-chart-outline"
-            title="Підсумки"
+            title="Підсумки ЛП"
             onPress={() => tabNavigate('FlightSummary')}
           />
 
           <ProfileButton
             icon="grid-outline"
-            title="Зведена таблиця"
+            title="Зведена таблиця ЛП"
             onPress={() => Linking.openURL('https://fly-book.vercel.app/tabs/readiness')}
           />
 

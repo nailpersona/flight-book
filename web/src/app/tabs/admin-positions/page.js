@@ -206,7 +206,13 @@ export default function AdminPositionsPage() {
     try {
       const pilotsInPos = pilots.filter(p => p.position_id === pos.id);
       for (const pilot of pilotsInPos) {
-        await supabase.from('users').update({ position_id: pos.parent_id }).eq('id', pilot.id);
+        const res = await fetch('/api/positions', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: pilot.id, positionId: pos.parent_id }),
+        });
+        const result = await res.json();
+        if (result.error) throw new Error(result.error);
       }
       const res = await fetch('/api/positions', {
         method: 'DELETE',
@@ -287,18 +293,25 @@ export default function AdminPositionsPage() {
       return;
     }
 
-    const { error } = await supabase.from('users').update({ position_id: addToPositionId }).eq('id', selectedPersonId);
-    if (error) {
-      window.alert(error.message);
-    } else {
+    try {
+      const res = await fetch('/api/positions', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: selectedPersonId, positionId: addToPositionId }),
+      });
+      const result = await res.json();
+      if (result.error) throw new Error(result.error);
+
       setShowAddToPositionModal(false);
       setSelectedPersonId(null);
-      setAddToPositionId(null);
       const newExpanded = new Set(expandedIds);
       newExpanded.add(addToPositionId);
       setExpandedIds(newExpanded);
+      setAddToPositionId(null);
       await new Promise(resolve => setTimeout(resolve, 300));
       loadData();
+    } catch (err) {
+      window.alert(err.message);
     }
   };
 
@@ -317,15 +330,22 @@ export default function AdminPositionsPage() {
 
   // Зняти людину з посади
   const removeFromPosition = async (positionId, personId) => {
-    const { error } = await supabase.from('users').update({ position_id: null }).eq('id', personId);
-    if (error) {
-      window.alert(error.message);
-    } else {
+    try {
+      const res = await fetch('/api/positions', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: personId, positionId: null }),
+      });
+      const result = await res.json();
+      if (result.error) throw new Error(result.error);
+
       setShowRemoveFromPositionModal(false);
       setRemoveFromPositionId(null);
       setSelectedRemovePersonId(null);
       setPeopleOnPosition([]);
       loadData();
+    } catch (err) {
+      window.alert(err.message);
     }
   };
 
