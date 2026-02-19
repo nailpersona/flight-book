@@ -1,23 +1,23 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 
-// Server-side Supabase client with service_role key (bypasses RLS)
+// Server-side Supabase client - use service_role if available, fallback to anon
 function getAdminClient() {
   const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  // Try service_role first, fallback to anon key
+  const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   console.log('[positions API] env check:', {
     hasUrl: !!SUPABASE_URL,
-    hasServiceKey: !!SERVICE_ROLE_KEY,
-    serviceKeyLength: SERVICE_ROLE_KEY?.length,
-    serviceKeyPrefix: SERVICE_ROLE_KEY?.substring(0, 10) + '...'
+    hasKey: !!KEY,
+    keyType: process.env.SUPABASE_SERVICE_ROLE_KEY ? 'service_role' : 'anon'
   });
 
-  if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
+  if (!SUPABASE_URL || !KEY) {
     throw new Error('Missing Supabase config');
   }
 
-  return createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+  return createClient(SUPABASE_URL, KEY, {
     auth: {
       autoRefreshToken: false,
       persistSession: false
