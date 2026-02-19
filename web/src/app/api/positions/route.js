@@ -6,6 +6,13 @@ function getAdminClient() {
   const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
+  console.log('[positions API] env check:', {
+    hasUrl: !!SUPABASE_URL,
+    hasServiceKey: !!SERVICE_ROLE_KEY,
+    serviceKeyLength: SERVICE_ROLE_KEY?.length,
+    serviceKeyPrefix: SERVICE_ROLE_KEY?.substring(0, 10) + '...'
+  });
+
   if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
     throw new Error('Missing Supabase config');
   }
@@ -36,9 +43,12 @@ export async function GET() {
 
 // POST - create new position
 export async function POST(request) {
+  console.log('[positions API] POST request received');
   try {
     const body = await request.json();
+    console.log('[positions API] POST body:', body);
     const supabase = getAdminClient();
+    console.log('[positions API] Admin client created successfully');
 
     const { data, error } = await supabase
       .from('positions')
