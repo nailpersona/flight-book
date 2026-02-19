@@ -19,6 +19,7 @@ export default function AdminUsersPage() {
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [newPass, setNewPass] = useState('');
+  const [editName, setEditName] = useState('');
   const [editRole, setEditRole] = useState('user');
   const [saving, setSaving] = useState(false);
 
@@ -28,7 +29,7 @@ export default function AdminUsersPage() {
 
   const loadUsers = async () => {
     setLoading(true);
-    const { data, error } = await supabase.from('users').select('id, name, email, role').order('name');
+    const { data, error } = await supabase.from('users').select('id, name, email, role, crew_role').order('name');
     console.log('loadUsers data:', data, 'error:', error);
     setUsers(data || []);
     setLoading(false);
@@ -61,17 +62,22 @@ export default function AdminUsersPage() {
 
   const openEditModal = (user) => {
     setSelectedUser(user);
+    setEditName(user.name || '');
     setEditRole(user.role || 'user');
     setShowEdit(true);
   };
 
-  const updateUserRole = async () => {
+  const updateUserInfo = async () => {
     if (!selectedUser) return;
+    if (!editName.trim()) {
+      window.alert('ПІБ не може бути порожнім');
+      return;
+    }
     setSaving(true);
     try {
       const { error } = await supabase
         .from('users')
-        .update({ role: editRole })
+        .update({ name: editName.trim(), role: editRole })
         .eq('id', selectedUser.id);
       if (error) throw error;
       setShowEdit(false);
@@ -177,19 +183,20 @@ export default function AdminUsersPage() {
       {!loading && (
         <div className={s.card}>
           <table className={s.table}>
-            <thead><tr><th>ПІБ</th><th>Email</th><th>Роль</th><th></th></tr></thead>
+            <thead><tr><th>ПІБ</th><th>Email</th><th>Роль в екіпажі</th><th>Роль</th><th></th></tr></thead>
             <tbody>
               {users.map(u => (
                 <tr key={u.id}>
                   <td>{u.name}</td>
                   <td>{u.email}</td>
+                  <td>{u.crew_role || '—'}</td>
                   <td>{u.role || 'user'}</td>
                   <td style={{ width: 80 }}>
                     <div style={{ display: 'flex', gap: 4 }}>
                       <button
                         onClick={() => openEditModal(u)}
                         style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: '#6B7280' }}
-                        title="Змінити роль"
+                        title="Редагувати"
                       >
                         <IoCreateOutline size={18} />
                       </button>
@@ -224,9 +231,18 @@ export default function AdminUsersPage() {
         </div>
       </Modal>
 
-      <Modal visible={showEdit} onClose={() => setShowEdit(false)} title="Змінити роль">
-        <div className={s.label}>Користувач</div>
-        <div style={{ marginBottom: 12, fontSize: 15, color: '#111827' }}>{selectedUser?.name}</div>
+      <Modal visible={showEdit} onClose={() => setShowEdit(false)} title="Редагувати користувача">
+        <div className={s.label}>ПІБ</div>
+        <input
+          className={s.input}
+          value={editName}
+          onChange={e => setEditName(e.target.value)}
+          style={{ marginBottom: 12 }}
+        />
+        <div className={s.label}>Email</div>
+        <div style={{ marginBottom: 12, fontSize: 15, color: '#6B7280' }}>{selectedUser?.email}</div>
+        <div className={s.label}>Роль в екіпажі</div>
+        <div style={{ marginBottom: 12, fontSize: 15, color: '#6B7280' }}>{selectedUser?.crew_role || '—'}</div>
         <div className={s.label}>Роль</div>
         <select
           className={s.input}
@@ -239,7 +255,7 @@ export default function AdminUsersPage() {
         </select>
         <div className={s.row}>
           <button className={`${s.btn} ${s.btnSecondary} ${s.col}`} onClick={() => setShowEdit(false)}>Скасувати</button>
-          <button className={`${s.btn} ${s.btnPrimary} ${s.col}`} onClick={updateUserRole} disabled={saving}>
+          <button className={`${s.btn} ${s.btnPrimary} ${s.col}`} onClick={updateUserInfo} disabled={saving}>
             {saving ? <div className={s.spinner} /> : 'Зберегти'}
           </button>
         </div>
