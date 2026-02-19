@@ -43,12 +43,9 @@ export async function GET() {
 
 // POST - create new position
 export async function POST(request) {
-  console.log('[positions API] POST request received');
   try {
     const body = await request.json();
-    console.log('[positions API] POST body:', body);
     const supabase = getAdminClient();
-    console.log('[positions API] Admin client created successfully');
 
     const { data, error } = await supabase
       .from('positions')
@@ -56,7 +53,17 @@ export async function POST(request) {
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      // Додаємо debug інфо в помилку
+      return NextResponse.json({
+        error: error.message,
+        debug: {
+          hasServiceKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+          keyPrefix: process.env.SUPABASE_SERVICE_ROLE_KEY?.substring(0, 15) + '...',
+          keyType: process.env.SUPABASE_SERVICE_ROLE_KEY ? 'service_role' : 'anon'
+        }
+      }, { status: 500 });
+    }
     return NextResponse.json({ data });
   } catch (err) {
     return NextResponse.json({ error: err.message }, { status: 500 });
