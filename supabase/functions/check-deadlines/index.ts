@@ -88,7 +88,11 @@ Deno.serve(async (req: Request) => {
             body: `${mu.mu_condition}${aircraftName ? ` (${aircraftName})` : ''} - термін закінчився ${expiryDate.toLocaleDateString('uk-UA')}`,
             deadline_date: expiryDate.toISOString().split('T')[0],
             days_left: daysLeft,
-            metadata: { mu_condition: mu.mu_condition, aircraft_type_id: mu.aircraft_type_id }
+            metadata: {
+              mu_condition: mu.mu_condition,
+              aircraft_type_id: mu.aircraft_type_id,
+              deadline_date: expiryDate.toISOString().split('T')[0] // Для унікальності циклу
+            }
           });
         } else if (daysLeft <= 15) {
           // Термін закінчується через 15 днів або менше
@@ -99,7 +103,11 @@ Deno.serve(async (req: Request) => {
             body: `${mu.mu_condition}${aircraftName ? ` (${aircraftName})` : ''} - залишилось ${daysLeft} дн. (до ${expiryDate.toLocaleDateString('uk-UA')})`,
             deadline_date: expiryDate.toISOString().split('T')[0],
             days_left: daysLeft,
-            metadata: { mu_condition: mu.mu_condition, aircraft_type_id: mu.aircraft_type_id }
+            metadata: {
+              mu_condition: mu.mu_condition,
+              aircraft_type_id: mu.aircraft_type_id,
+              deadline_date: expiryDate.toISOString().split('T')[0] // Для унікальності циклу
+            }
           });
         }
       }
@@ -173,7 +181,11 @@ Deno.serve(async (req: Request) => {
             body: `${lpDisplayName}${aircraftName ? ` (${aircraftName})` : ''} - термін закінчився ${expiryDate.toLocaleDateString('uk-UA')}`,
             deadline_date: expiryDate.toISOString().split('T')[0],
             days_left: daysLeft,
-            metadata: { lp_type: lp.lp_type, aircraft_type_id: lp.aircraft_type_id }
+            metadata: {
+              lp_type: lp.lp_type,
+              aircraft_type_id: lp.aircraft_type_id,
+              deadline_date: expiryDate.toISOString().split('T')[0]
+            }
           });
         } else if (daysLeft <= 15) {
           notificationsToSend.push({
@@ -183,7 +195,11 @@ Deno.serve(async (req: Request) => {
             body: `${lpDisplayName}${aircraftName ? ` (${aircraftName})` : ''} - залишилось ${daysLeft} дн. (до ${expiryDate.toLocaleDateString('uk-UA')})`,
             deadline_date: expiryDate.toISOString().split('T')[0],
             days_left: daysLeft,
-            metadata: { lp_type: lp.lp_type, aircraft_type_id: lp.aircraft_type_id }
+            metadata: {
+              lp_type: lp.lp_type,
+              aircraft_type_id: lp.aircraft_type_id,
+              deadline_date: expiryDate.toISOString().split('T')[0]
+            }
           });
         }
       }
@@ -219,7 +235,10 @@ Deno.serve(async (req: Request) => {
             body: `${commName} - термін закінчився ${expiryDate.toLocaleDateString('uk-UA')}`,
             deadline_date: expiryDate.toISOString().split('T')[0],
             days_left: daysLeft,
-            metadata: { commission_type_id: c.commission_type_id }
+            metadata: {
+              commission_type_id: c.commission_type_id,
+              deadline_date: expiryDate.toISOString().split('T')[0]
+            }
           });
         } else if (daysLeft <= 15) {
           notificationsToSend.push({
@@ -229,7 +248,10 @@ Deno.serve(async (req: Request) => {
             body: `${commName} - залишилось ${daysLeft} дн. (до ${expiryDate.toLocaleDateString('uk-UA')})`,
             deadline_date: expiryDate.toISOString().split('T')[0],
             days_left: daysLeft,
-            metadata: { commission_type_id: c.commission_type_id }
+            metadata: {
+              commission_type_id: c.commission_type_id,
+              deadline_date: expiryDate.toISOString().split('T')[0]
+            }
           });
         }
       }
@@ -260,7 +282,10 @@ Deno.serve(async (req: Request) => {
             body: `${ch.check_type} - термін закінчився ${expiryDate.toLocaleDateString('uk-UA')}`,
             deadline_date: expiryDate.toISOString().split('T')[0],
             days_left: daysLeft,
-            metadata: { check_type: ch.check_type }
+            metadata: {
+              check_type: ch.check_type,
+              deadline_date: expiryDate.toISOString().split('T')[0]
+            }
           });
         } else if (daysLeft <= 15) {
           notificationsToSend.push({
@@ -270,26 +295,29 @@ Deno.serve(async (req: Request) => {
             body: `${ch.check_type} - залишилось ${daysLeft} дн. (до ${expiryDate.toLocaleDateString('uk-UA')})`,
             deadline_date: expiryDate.toISOString().split('T')[0],
             days_left: daysLeft,
-            metadata: { check_type: ch.check_type }
+            metadata: {
+              check_type: ch.check_type,
+              deadline_date: expiryDate.toISOString().split('T')[0]
+            }
           });
         }
       }
     }
 
-    // Видалити дублікати - перевірити чи вже є таке повідомлення
+    // Надсилати повідомлення тільки один раз для кожного події:
+    // - warning: коли термін вперше стає <= 15 днів
+    // - expired: коли термін вперше закінчується
+    // Перевіряємо чи ВЖЕ було надіслано таке повідомлення (без обмеження часом)
     const sentCount = { new: 0, duplicate: 0 };
 
     for (const n of notificationsToSend) {
-      // Перевірити чи вже є таке повідомлення за останні 7 днів
-      const weekAgo = new Date(today);
-      weekAgo.setDate(weekAgo.getDate() - 7);
-
+      // Перевірити чи вже є таке повідомлення (будь-коли, не тільки за останні 7 днів)
+      // Використовуємо deadline_date та metadata для точного порівняння
       const { data: existing } = await supabase
         .from('notifications')
         .select('id')
         .eq('user_id', n.user_id)
         .eq('type', n.type)
-        .gte('created_at', weekAgo.toISOString())
         .contains('metadata', n.metadata as any);
 
       if (!existing || existing.length === 0) {
